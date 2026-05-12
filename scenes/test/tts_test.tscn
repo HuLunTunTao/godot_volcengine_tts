@@ -1,0 +1,171 @@
+[gd_scene format=3 uid="uid://cthphk0lkli80"]
+
+[ext_resource type="Script" uid="uid://bg8lemwgtgdvo" path="res://scenes/test/tts_test.gd" id="1_test_script"]
+
+[node name="VolcengineTtsTest" type="Control" unique_id=673919252]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_test_script")
+
+[node name="Background" type="ColorRect" parent="." unique_id=1073189653]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.075, 0.08, 0.095, 1)
+
+[node name="Margin" type="MarginContainer" parent="." unique_id=173762974]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="Margin" unique_id=1095205489]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Margin/VBox" unique_id=642310089]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Godot Volcengine TTS Test"
+
+[node name="Hint" type="Label" parent="Margin/VBox" unique_id=159633734]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+text = "Paste a Volcengine API key, choose a voice type, then test HTTP synthesis, unidirectional streaming, or bidirectional chunked streaming. Credentials stay in memory only."
+autowrap_mode = 3
+
+[node name="LanguageButton" type="Button" parent="Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 34)
+layout_mode = 2
+size_flags_horizontal = 0
+text = "中文"
+
+[node name="ApiKeyRow" type="HBoxContainer" parent="Margin/VBox" unique_id=581507481]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ApiKeyLabel" type="Label" parent="Margin/VBox/ApiKeyRow" unique_id=1925010129]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "API Key"
+
+[node name="ApiKeyEdit" type="LineEdit" parent="Margin/VBox/ApiKeyRow" unique_id=2104367305]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Volcengine API key"
+secret = true
+
+[node name="ConfigRow" type="HBoxContainer" parent="Margin/VBox" unique_id=1862087503]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ResourceLabel" type="Label" parent="Margin/VBox/ConfigRow" unique_id=1433197129]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "Resource"
+
+[node name="ResourceIdEdit" type="LineEdit" parent="Margin/VBox/ConfigRow" unique_id=1530204281]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+
+[node name="ModelLabel" type="Label" parent="Margin/VBox/ConfigRow" unique_id=1063637147]
+custom_minimum_size = Vector2(56, 0)
+layout_mode = 2
+text = "Model"
+
+[node name="ModelEdit" type="LineEdit" parent="Margin/VBox/ConfigRow" unique_id=1641270445]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="VoiceRow" type="HBoxContainer" parent="Margin/VBox" unique_id=1024529556]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="VoiceLabel" type="Label" parent="Margin/VBox/VoiceRow" unique_id=822518859]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "Voice"
+
+[node name="VoiceEdit" type="LineEdit" parent="Margin/VBox/VoiceRow" unique_id=249913553]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "voice_type, for example zh_male_dayi_uranus_bigtts"
+
+[node name="RateLabel" type="Label" parent="Margin/VBox/VoiceRow" unique_id=1462872702]
+custom_minimum_size = Vector2(88, 0)
+layout_mode = 2
+text = "Sample rate"
+
+[node name="SampleRateSpin" type="SpinBox" parent="Margin/VBox/VoiceRow" unique_id=735612039]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+min_value = 8000.0
+max_value = 48000.0
+step = 1000.0
+value = 24000.0
+
+[node name="TextLabel" type="Label" parent="Margin/VBox" unique_id=1347278053]
+layout_mode = 2
+text = "Text"
+
+[node name="TextEdit" type="TextEdit" parent="Margin/VBox" unique_id=1910281595]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_vertical = 3
+wrap_mode = 1
+
+[node name="ButtonRow" type="HBoxContainer" parent="Margin/VBox" unique_id=1175672254]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HttpButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=399975306]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 38)
+layout_mode = 2
+text = "HTTP MP3"
+
+[node name="UniButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=1389534039]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(190, 38)
+layout_mode = 2
+text = "Uni WS PCM"
+
+[node name="BidiButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=861311]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(210, 38)
+layout_mode = 2
+text = "Bidi WS Chunks"
+
+[node name="StopButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=620647361]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Stop"
+
+[node name="StatusLabel" type="Label" parent="Margin/VBox" unique_id=671827013]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.76, 0.86, 0.78, 1)
+text = "Ready."
+autowrap_mode = 3
