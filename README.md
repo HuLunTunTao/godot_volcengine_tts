@@ -27,11 +27,18 @@ Detailed plugin documentation:
 
 It supports the three common synthesis paths:
 
-| Endpoint | Use case | SSML | Output |
-|---|---|---|---|
-| Bidirectional WebSocket | LLM token streaming and low-latency playback | No | PCM streaming |
-| Unidirectional WebSocket | One request, streamed audio chunks | Yes | PCM/MP3/WAV/Opus |
-| HTTP chunked synthesis | Pre-generate or cache complete audio files | Yes | Complete audio bytes |
+| Endpoint | Addon class | Use case | SSML | Output |
+|---|---|---|---|---|
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming and high-level `speak()` playback | No | PCM streaming for playback |
+| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | One request, streamed audio chunks | Yes | PCM/MP3/WAV/Opus chunks |
+| `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Pre-generate or cache complete audio files | Yes | Complete audio bytes |
+
+Important implementation detail: the high-level `VolcengineStreamingVoicePlayer.speak()`
+method currently uses the official bidirectional WebSocket endpoint. It starts
+one session, feeds the full text once, sends `FinishSession`, and plays the PCM
+audio chunks as they arrive. The official unidirectional streaming endpoint is
+still implemented, but it is exposed as the lower-level
+`voice.uni_client.synthesize_streaming(...)` API.
 
 ## Installation
 
@@ -70,6 +77,12 @@ func _ready() -> void:
 session, feeds the full text, finishes the session, and streams PCM audio into
 Godot playback.
 
+Under the hood, all clients send Volcengine headers including `X-Api-Key`,
+`X-Api-Resource-Id`, `X-Api-Connect-Id` or `X-Api-Request-Id`, and
+`X-Control-Require-Usage-Tokens-Return: *`. Request options are built by
+`TtsOptions.build_req_params()`, which maps flat Godot dictionaries such as
+`{"format": "pcm", "speech_rate": 10}` into Volcengine `req_params`.
+
 ### Bidirectional Streaming
 
 ```gdscript
@@ -101,6 +114,12 @@ It is a bilingual validation UI for entering a Volcengine API key, resource ID,
 model, voice type, sample rate, and sample text, then testing HTTP MP3
 synthesis, unidirectional WebSocket PCM streaming, bidirectional chunked
 streaming, and stop behavior.
+
+The test scene intentionally exercises both layers: the HTTP button calls
+`voice.fetch_audio()`, the unidirectional button calls
+`voice.uni_client.synthesize_streaming()` directly and pushes PCM into
+`AudioStreamGenerator`, and the bidirectional button calls
+`voice.start_streaming()`, `voice.feed_text()`, and `voice.finish_streaming()`.
 
 ![Volcengine TTS test scene showing API, model, voice, text, HTTP, unidirectional streaming, bidirectional streaming, and stop controls](docs/images/screenshot_0.png)
 
