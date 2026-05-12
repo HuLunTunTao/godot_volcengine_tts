@@ -5,7 +5,7 @@ extends Node
 ## 内部持有三个 client（双向 / 单向 WS / HTTP）+ 一个 AudioStreamPlayer，
 ## 对调用方暴露**用法导向**的三个 API：
 ##
-##   speak(text, voice, opts)              ← 走单向流式 WS（最常用，低延迟）
+##   speak(text, voice, opts)              ← 走双向 WS，单 session 喂全文后流式播放
 ##   start_streaming/feed_text/finish      ← 走双向 WS（LLM token streaming）
 ##   fetch_audio(text, voice, opts)        ← 走 HTTP，返回完整字节（缓存/外部播放）
 ##
