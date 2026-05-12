@@ -24,6 +24,12 @@ Godot 播放能力。
 PCM 字节流送入 `AudioStreamGenerator` 播放。真正的官方单向流式端点也已实现，
 但作为低层 API 暴露：`voice.uni_client.synthesize_streaming(...)`。
 
+这是一个有意选择的维护取舍。`speak()` 和真正的 LLM token streaming 可以共享同一套
+双向 session 生命周期、session_id 过滤、陈旧信号保护、取消语义、PCM 队列和背压播放路径。
+高层只保留一套播放管线，可以降低“单句播放”和“分段流式”在 stop、重入和播放收尾行为上
+出现分叉的概率。单向流式 client 仍作为低层 API 保留，用于 SSML 流式返回和自定义 chunk
+处理。
+
 音色列表以火山引擎官方文档为准：
 
 https://www.volcengine.com/docs/6561/1257544
@@ -56,6 +62,66 @@ func _ready() -> void:
 
 	await voice.speak("你好，世界。", "zh_male_dayi_uranus_bigtts")
 ```
+
+## 配置
+
+大多数项目只需要给实际使用的 client 设置 `api_key`、`resource_id`，以及可选的
+`default_model`：
+
+```gdscript
+for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
+	client.api_key = "your-volcengine-api-key"
+	client.resource_id = "seed-tts-2.0"
+	client.user_uid = "player-or-device-id"
+	client.default_model = "seed-tts-2.0-expressive"
+```
+
+也可以自行覆盖 host 或 API path。这个能力适合私有网关、反向代理、兼容端点，或火山后续
+调整路径时使用：
+
+```gdscript
+voice.bidi_client.base_url = "openspeech.bytedance.com"
+voice.bidi_client.path = "/api/v3/tts/bidirection"
+
+voice.uni_client.base_url = "your-gateway.example.com"
+voice.uni_client.path = "/api/v3/tts/unidirectional/stream"
+
+voice.http_client.base_url = "your-gateway.example.com"
+voice.http_client.path = "/api/v3/tts/unidirectional"
+```
+
+`base_url` 只填 host，不要带 `https://`、`wss://`，也不要带路径。各 client 会自己补协议：
+WebSocket client 使用 `wss://`，HTTP client 使用 443 端口 TLS 连接。
+
+其他常用运行时配置：
+
+| 属性 | 所属对象 | 默认值 | 说明 |
+|---|---|---|---|
+| `audio_bus` | `VolcengineStreamingVoicePlayer` | `&"Master"` | 高层播放使用的 Godot 音频总线 |
+| `sample_rate` | `VolcengineStreamingVoicePlayer` | `24000` | `speak()` / `start_streaming()` 默认 PCM 播放采样率 |
+| `buffer_length` | `VolcengineStreamingVoicePlayer` | `0.5` | `AudioStreamGenerator` 缓冲长度 |
+| `auto_context_chain` | `VolcengineStreamingVoicePlayer` | `false` | 自动把上一段 session id 作为下一段 `section_id` |
+| `connect_timeout_msec` | 所有 client | `8000` | WebSocket/HTTP 连接超时 |
+| `session_timeout_msec` | WS client | `20000` | 等待 WS 包的无活动超时 |
+| `read_timeout_msec` | HTTP client | `30000` | 读取 HTTP chunk 的无活动超时 |
+
+## API 速查
+
+| API | 端点 | 结果 |
+|---|---|---|
+| `voice.speak(text, voice_id, opts)` | 双向 WS | 流式播放 PCM；自然完成时返回 `true` |
+| `voice.start_streaming(voice_id, opts)` / `feed_text(chunk)` / `finish_streaming()` | 双向 WS | 播放增量文本生成的 PCM 流 |
+| `voice.fetch_audio(text, voice_id, opts)` | HTTP Chunked | 返回完整音频字节 |
+| `voice.uni_client.synthesize_streaming(text, voice_id, on_chunk, opts, out_session)` | 单向 WS | 每收到一个音频块就调用 `on_chunk` |
+| `voice.stop()` | 当前高层播放任务 | 中断播放，并让等待中的 `speak()` 返回 `false` |
+| `voice.current_session_id()` | 高层播放器 | 返回上一段自然完成的双向 session id |
+
+信号：
+
+- `voice.speak_finished`：高层播放自然结束、失败或被停止时都会发出。
+- `voice.bidi_client.audio_chunk_received(session_id, chunk)`：低层双向音频块事件。
+- `voice.bidi_client.session_finished(session_id)` 和
+  `voice.bidi_client.session_failed(session_id, reason)`：低层双向完成/失败事件。
 
 ## 用法 A：单句流式播放
 

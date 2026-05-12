@@ -28,6 +28,14 @@ PCM bytes into `AudioStreamGenerator`. The real official unidirectional
 streaming endpoint is implemented separately as
 `voice.uni_client.synthesize_streaming(...)`.
 
+This is a deliberate maintenance tradeoff. `speak()` and true LLM
+token-streaming can share the same bidirectional session lifecycle, session-id
+filtering, stale-signal protection, cancellation semantics, PCM queue, and
+backpressure playback path. Keeping one high-level playback pipeline reduces
+the chance that stop/reentry/playback behavior diverges between "one-shot" and
+"token-streaming" modes. The unidirectional client remains available as a
+lower-level API for SSML streaming and custom chunk handling.
+
 Volcengine updates available voices over time. Check the official voice list
 before choosing a `voice_type`:
 
@@ -62,6 +70,70 @@ func _ready() -> void:
 
 	await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
 ```
+
+## Configuration
+
+Most projects only need to set `api_key`, `resource_id`, and optionally
+`default_model` on the clients they use:
+
+```gdscript
+for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
+	client.api_key = "your-volcengine-api-key"
+	client.resource_id = "seed-tts-2.0"
+	client.user_uid = "player-or-device-id"
+	client.default_model = "seed-tts-2.0-expressive"
+```
+
+You can also override the host or API path. This is useful for private gateways,
+reverse proxies, compatible endpoints, or future Volcengine path changes:
+
+```gdscript
+voice.bidi_client.base_url = "openspeech.bytedance.com"
+voice.bidi_client.path = "/api/v3/tts/bidirection"
+
+voice.uni_client.base_url = "your-gateway.example.com"
+voice.uni_client.path = "/api/v3/tts/unidirectional/stream"
+
+voice.http_client.base_url = "your-gateway.example.com"
+voice.http_client.path = "/api/v3/tts/unidirectional"
+```
+
+`base_url` is the host only. Do not include `https://`, `wss://`, or a trailing
+path. The clients add the protocol themselves: WebSocket clients use `wss://`,
+and the HTTP client connects with TLS on port 443.
+
+Other useful runtime knobs:
+
+| Property | Owner | Default | Notes |
+|---|---|---|---|
+| `audio_bus` | `VolcengineStreamingVoicePlayer` | `&"Master"` | Godot audio bus for high-level playback |
+| `sample_rate` | `VolcengineStreamingVoicePlayer` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
+| `buffer_length` | `VolcengineStreamingVoicePlayer` | `0.5` | `AudioStreamGenerator` buffer length |
+| `auto_context_chain` | `VolcengineStreamingVoicePlayer` | `false` | Reuses the previous session id as `section_id` |
+| `connect_timeout_msec` | all clients | `8000` | WebSocket/HTTP connection timeout |
+| `session_timeout_msec` | WS clients | `20000` | Inactivity timeout while waiting for WS packets |
+| `read_timeout_msec` | HTTP client | `30000` | Inactivity timeout while reading HTTP chunks |
+
+## API Quick Reference
+
+| API | Endpoint | Result |
+|---|---|---|
+| `voice.speak(text, voice_id, opts)` | Bidirectional WS | Plays streamed PCM; returns `true` on natural completion |
+| `voice.start_streaming(voice_id, opts)` / `feed_text(chunk)` / `finish_streaming()` | Bidirectional WS | Plays streamed PCM from incremental text |
+| `voice.fetch_audio(text, voice_id, opts)` | HTTP chunked | Returns complete audio bytes |
+| `voice.uni_client.synthesize_streaming(text, voice_id, on_chunk, opts, out_session)` | Unidirectional WS | Calls `on_chunk` for every streamed audio chunk |
+| `voice.stop()` | Active high-level playback | Cancels playback and wakes waiters with `false` |
+| `voice.current_session_id()` | High-level player | Returns the last completed bidirectional session id |
+
+Signals:
+
+- `voice.speak_finished`: emitted when high-level playback ends, fails, or is
+  stopped.
+- `voice.bidi_client.audio_chunk_received(session_id, chunk)`: lower-level
+  bidirectional audio event.
+- `voice.bidi_client.session_finished(session_id)` and
+  `voice.bidi_client.session_failed(session_id, reason)`: lower-level
+  bidirectional completion events.
 
 ## Use Case A: One-Shot Streaming Playback
 
