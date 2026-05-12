@@ -134,33 +134,121 @@ layout_mode = 2
 size_flags_vertical = 3
 wrap_mode = 1
 
-[node name="ButtonRow" type="HBoxContainer" parent="Margin/VBox" unique_id=1175672254]
+[node name="ModeRow" type="HBoxContainer" parent="Margin/VBox" unique_id=1175672254]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="HttpButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=399975306]
+[node name="ModeLabel" type="Label" parent="Margin/VBox/ModeRow"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "Mode"
+
+[node name="ModeOption" type="OptionButton" parent="Margin/VBox/ModeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 38)
+layout_mode = 2
+
+[node name="RunButton" type="Button" parent="Margin/VBox/ModeRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(160, 38)
 layout_mode = 2
-text = "HTTP MP3"
+text = "Run"
 
-[node name="UniButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=1389534039]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(190, 38)
-layout_mode = 2
-text = "Uni WS PCM"
-
-[node name="BidiButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=861311]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(210, 38)
-layout_mode = 2
-text = "Bidi WS Chunks"
-
-[node name="StopButton" type="Button" parent="Margin/VBox/ButtonRow" unique_id=620647361]
+[node name="StopButton" type="Button" parent="Margin/VBox/ModeRow" unique_id=620647361]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 38)
 layout_mode = 2
 text = "Stop"
+
+[node name="SaveOptionsBox" type="VBoxContainer" parent="Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SaveDirRow" type="HBoxContainer" parent="Margin/VBox/SaveOptionsBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SaveDirLabel" type="Label" parent="Margin/VBox/SaveOptionsBox/SaveDirRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "Directory"
+
+[node name="SaveDirEdit" type="LineEdit" parent="Margin/VBox/SaveOptionsBox/SaveDirRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Choose a local directory"
+
+[node name="SaveDirButton" type="Button" parent="Margin/VBox/SaveOptionsBox/SaveDirRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 34)
+layout_mode = 2
+text = "Browse"
+
+[node name="FilenameRow" type="HBoxContainer" parent="Margin/VBox/SaveOptionsBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="FilenameLabel" type="Label" parent="Margin/VBox/SaveOptionsBox/FilenameRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "Filename"
+
+[node name="FilenameTemplateEdit" type="LineEdit" parent="Margin/VBox/SaveOptionsBox/FilenameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "{voice}_{model}_{index}.mp3"
+
+[node name="IndexRow" type="HBoxContainer" parent="Margin/VBox/SaveOptionsBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="IndexLabel" type="Label" parent="Margin/VBox/SaveOptionsBox/IndexRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+text = "Index"
+
+[node name="IndexSpin" type="SpinBox" parent="Margin/VBox/SaveOptionsBox/IndexRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 999999.0
+step = 1.0
+value = 1.0
+
+[node name="AutoIncrementCheck" type="CheckBox" parent="Margin/VBox/SaveOptionsBox/IndexRow"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Auto increment"
+
+[node name="PlaceholderHint" type="Label" parent="Margin/VBox/SaveOptionsBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+text = "Placeholders: {voice}, {model}, {resource}, {index}"
+autowrap_mode = 3
+
+[node name="ReplaySavedButton" type="Button" parent="Margin/VBox/SaveOptionsBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 34)
+layout_mode = 2
+size_flags_horizontal = 0
+text = "Replay Last Audio"
+
+[node name="SaveDirDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Choose Save Directory"
+initial_position = 2
+size = Vector2i(800, 520)
+file_mode = 2
+access = 2
 
 [node name="StatusLabel" type="Label" parent="Margin/VBox" unique_id=671827013]
 unique_name_in_owner = true
