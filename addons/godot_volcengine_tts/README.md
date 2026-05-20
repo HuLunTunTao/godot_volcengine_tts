@@ -1,36 +1,34 @@
 # Godot Volcengine TTS
 
-An unofficial third-party Godot 4 client SDK for Volcengine Doubao TTS. It was
-originally extracted from a tactics RPG project that needed character dialogue,
-low-latency streamed speech, and cached voice lines.
+An unofficial third-party Godot 4 client SDK for Volcengine Doubao TTS. It was originally extracted from a tactics RPG project that needed character dialogue, low-latency streamed speech, and cached voice lines.
 
-> Compliance notes, service terms, and disclaimers are kept in the repository
-> root README.
+> Compliance notes, service terms, and disclaimers are kept in the repository root README.
 
 Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 
-## Supported Endpoints
-
-| Endpoint | Class | Use case | SSML | Output |
-|---|---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming with incremental text | No | PCM streaming |
-| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | High-level `speak()` playback and one full text request | Yes | PCM/MP3/WAV/Opus chunks |
-| `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Pre-generate or cache complete audio | Yes | Complete audio bytes |
-
-`VolcengineStreamingVoicePlayer` owns all three clients and adds Godot playback
-on top of them.
-
-Important naming note: in this addon, "one-shot streaming playback" means the
-high-level `speak()` helper. It uses the official unidirectional WebSocket
-endpoint, sends one full text or SSML request, and streams returned PCM bytes
-into `AudioStreamGenerator`. The bidirectional endpoint is reserved for
-`start_streaming()` / `feed_text()` / `finish_streaming()` when text arrives
-incrementally from an LLM or another generator.
-
-Volcengine updates available voices over time. Check the official voice list
-before choosing a `voice_type`:
+Volcengine updates available voices over time. Check the official voice list before choosing a `voice_type`:
 
 https://www.volcengine.com/docs/6561/1257544
+
+## Which API Should I Use?
+
+Most projects should start with `VolcengineStreamingVoicePlayer`. It manages configuration, playback state, and the three lower-level clients.
+
+| Need | Recommended API | Endpoint | Notes |
+|---|---|---|---|
+| Play one complete text string in real time | `voice.speak(text, voice_id, opts)` | Unidirectional WS | Most common path; streams PCM into Godot playback |
+| Play one complete SSML string in real time | `voice.speak_ssml(ssml, voice_id, opts)` | Unidirectional WS | High-level SSML playback; no need to put content in `opts["ssml"]` |
+| Stream incremental text from an LLM or generator | `start_streaming()` / `feed_text()` / `finish_streaming()` | Bidirectional WS | Multiple text chunks share one server session |
+| Pre-generate, cache, or save an audio file | `voice.fetch_audio(text, voice_id, opts)` | HTTP chunked | Returns a complete `PackedByteArray` |
+| Own audio chunks, buffering, or protocol handling | Lower-level clients | Unidirectional WS / Bidirectional WS / HTTP | Advanced usage; not the first choice for normal gameplay code |
+
+Endpoint and client mapping:
+
+| Endpoint | Class | SSML | Output |
+|---|---|---|---|
+| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | Yes | PCM/MP3/WAV/Opus chunks |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | No | PCM stream |
+| `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Yes | Complete audio bytes |
 
 ## Installation
 
@@ -40,30 +38,30 @@ Copy this folder into your project:
 addons/godot_volcengine_tts/
 ```
 
-Then enable **Godot Volcengine TTS** in **Project Settings > Plugins**. The
-editor plugin only exists to satisfy Godot's addon format; runtime code uses the
-`class_name` scripts directly.
+Then enable **Godot Volcengine TTS** in **Project Settings > Plugins**. The editor plugin only exists to satisfy Godot's addon format; runtime code uses the `class_name` scripts directly.
 
 ## Quick Start
+
+This is the smallest runnable example. `api_key` is required; the other fields either have defaults or are only needed for specific cases.
 
 ```gdscript
 extends Node
 
 func _ready() -> void:
 	var voice := VolcengineStreamingVoicePlayer.new()
-	voice.audio_bus = &"Master"
 	voice.api_key = "your-volcengine-api-key"
-	voice.resource_id = "seed-tts-2.0"
-	voice.user_uid = "player-or-device-id"
-	voice.default_model = "seed-tts-2.0-expressive"
 	add_child(voice)
 
-	await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
+	var ok := await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
+	if not ok:
+		push_warning("TTS playback failed or was interrupted")
 ```
+
+The two required `speak()` arguments are the text content and the Volcengine voice string.
 
 ## Configuration
 
-Most projects only need to configure the high-level voice node:
+Configure authentication and model fields on the high-level `voice` node. `voice` copies these values to the bidirectional, unidirectional, and HTTP clients.
 
 ```gdscript
 voice.api_key = "your-volcengine-api-key"
@@ -72,75 +70,71 @@ voice.user_uid = "player-or-device-id"
 voice.default_model = "seed-tts-2.0-expressive"
 ```
 
-These values are copied to the bidirectional, unidirectional, and HTTP clients.
-`api_key` defaults to an empty string; if it is not configured, `speak()` warns
-and returns `false`. If you later set one of these `voice` properties again, it
-overwrites the corresponding value on all three clients.
+Useful runtime properties:
 
-The lower-level clients remain public for advanced usage. You can override the
-host, API path, or timeout for private gateways, reverse proxies, compatible
-endpoints, or future Volcengine path changes:
+| Property | Default | Notes |
+|---|---|---|
+| `api_key` | `""` | Volcengine API key; requests fail if it is not configured |
+| `resource_id` | `"seed-tts-2.0"` | Volcengine resource id |
+| `user_uid` | `"default"` | User/device id sent in requests |
+| `default_model` | `""` | Default model injected for supported `saturn_` voices |
+| `audio_bus` | `&"Master"` | Godot audio bus for high-level playback |
+| `sample_rate` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
+| `buffer_length` | `0.5` | `AudioStreamGenerator` buffer length |
+| `auto_context_chain` | `false` | Reuses the previous session id as `section_id` |
+| `connect_timeout_msec` | `8000` | WebSocket/HTTP connection timeout |
+| `session_timeout_msec` | `20000` | WebSocket inactivity timeout while waiting for packets |
+| `read_timeout_msec` | `30000` | HTTP inactivity timeout while reading chunks |
+
+You can configure a lower-level client directly, but that only affects that client. If you later set `voice.api_key`, `voice.resource_id`, `voice.user_uid`, or `voice.default_model`, the value is copied over all three clients again.
 
 ```gdscript
-voice.bidi_client.base_url = "openspeech.bytedance.com"
-voice.bidi_client.path = "/api/v3/tts/bidirection"
+voice.bidi_client.api_key = "your-volcengine-api-key"
+voice.bidi_client.resource_id = "seed-tts-2.0"
+voice.bidi_client.user_uid = "player-or-device-id"
+voice.bidi_client.default_model = "seed-tts-2.0-expressive"
+```
 
+Private gateways, reverse proxies, or compatible endpoints can override the lower-level clients' host, API path, and timeouts:
+
+```gdscript
 voice.uni_client.base_url = "your-gateway.example.com"
 voice.uni_client.path = "/api/v3/tts/unidirectional/stream"
-
 voice.http_client.base_url = "your-gateway.example.com"
 voice.http_client.path = "/api/v3/tts/unidirectional"
 ```
 
-`base_url` is the host only. Do not include `https://`, `wss://`, or a trailing
-path. The clients add the protocol themselves: WebSocket clients use `wss://`,
-and the HTTP client connects with TLS on port 443.
+`base_url` is the host only. Do not include `https://`, `wss://`, or a path. WebSocket clients use `wss://`; the HTTP client connects with TLS on port 443.
 
-Other useful runtime knobs:
+## High-Level API
 
-| Property | Owner | Default | Notes |
-|---|---|---|---|
-| `api_key` | `VolcengineStreamingVoicePlayer` | `""` | Volcengine API key; copied to all clients |
-| `resource_id` | `VolcengineStreamingVoicePlayer` | `"seed-tts-2.0"` | Volcengine resource id; copied to all clients |
-| `user_uid` | `VolcengineStreamingVoicePlayer` | `"default"` | User/device id sent in requests; copied to all clients |
-| `default_model` | `VolcengineStreamingVoicePlayer` | `""` | Default model injected for supported `saturn_` voices; copied to all clients |
-| `audio_bus` | `VolcengineStreamingVoicePlayer` | `&"Master"` | Godot audio bus for high-level playback |
-| `sample_rate` | `VolcengineStreamingVoicePlayer` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
-| `buffer_length` | `VolcengineStreamingVoicePlayer` | `0.5` | `AudioStreamGenerator` buffer length |
-| `auto_context_chain` | `VolcengineStreamingVoicePlayer` | `false` | Reuses the previous session id as `section_id` |
-| `connect_timeout_msec` | all clients | `8000` | WebSocket/HTTP connection timeout |
-| `session_timeout_msec` | WS clients | `20000` | Inactivity timeout while waiting for WS packets |
-| `read_timeout_msec` | HTTP client | `30000` | Inactivity timeout while reading HTTP chunks |
+`VolcengineStreamingVoicePlayer` is the recommended entry point. It synchronizes configuration to the lower-level clients and connects returned PCM bytes to Godot's `AudioStreamGenerator`.
 
-## API Quick Reference
+Signal:
 
-| API | Endpoint | Result |
-|---|---|---|
-| `voice.speak(text, voice_id, opts)` | Unidirectional WS | Plays streamed PCM; returns `true` on natural completion |
-| `voice.start_streaming(voice_id, opts)` / `feed_text(chunk)` / `finish_streaming()` | Bidirectional WS | Plays streamed PCM from incremental text |
-| `voice.fetch_audio(text, voice_id, opts)` | HTTP chunked | Returns complete audio bytes |
-| `voice.uni_client.synthesize_streaming(text, voice_id, on_chunk, opts, out_session)` | Unidirectional WS | Calls `on_chunk` for every streamed audio chunk |
-| `voice.stop()` | Active high-level playback | Cancels playback and wakes waiters with `false` |
-| `voice.current_session_id()` | High-level player | Returns the last completed high-level playback session id |
+- `voice.speak_finished`: emitted when high-level playback completes, fails, or is stopped.
 
-Signals:
-
-- `voice.speak_finished`: emitted when high-level playback ends, fails, or is
-  stopped.
-- `voice.bidi_client.audio_chunk_received(session_id, chunk)`: lower-level
-  bidirectional audio event.
-- `voice.bidi_client.session_finished(session_id)` and
-  `voice.bidi_client.session_failed(session_id, reason)`: lower-level
-  bidirectional completion events.
-
-## Use Case A: One-Shot Streaming Playback
+Examples below assume this setup has already run:
 
 ```gdscript
 var voice := VolcengineStreamingVoicePlayer.new()
-voice.api_key = "..."
-voice.resource_id = "seed-tts-2.0"
+voice.api_key = "your-volcengine-api-key"
 add_child(voice)
+```
 
+### `speak(text, voice_id, opts := {})`
+
+Purpose: submit one complete plain-text request and play the returned PCM in real time.
+
+| Item | Details |
+|---|---|
+| Required arguments | `text`, `voice_id` |
+| Optional arguments | `opts`; see `Options Reference` |
+| Return value | `bool`; `true` on natural completion, `false` on failure or interruption |
+| Endpoint | Unidirectional WebSocket |
+| Defaults | Uses `pcm` if `format` is omitted; uses `voice.sample_rate` if `sample_rate` is omitted |
+
+```gdscript
 var ok := await voice.speak("Hold the bridge.", "zh_male_dayi_uranus_bigtts", {
 	"emotion": "happy",
 	"emotion_scale": 4,
@@ -148,72 +142,69 @@ var ok := await voice.speak("Hold the bridge.", "zh_male_dayi_uranus_bigtts", {
 })
 ```
 
-`speak()` returns `true` when playback completes naturally and `false` when it
-fails or is interrupted by `stop()` or a later request.
+`speak()` forces PCM because live Godot playback consumes PCM frames through `AudioStreamGenerator`. Even if you pass `"format": "mp3"`, it is changed to `"pcm"`; use `fetch_audio()` when you need MP3 bytes.
 
-Implementation details:
+If another `speak()` or `start_streaming()` task is already running, the new call interrupts the old task first. The old `await voice.speak(...)` returns `false`.
 
-- Uses `VolcengineTTSUnidirectionalClient`.
-- Forces `format = "pcm"` because `AudioStreamGenerator` consumes PCM frames.
-- Uses `sample_rate = voice.sample_rate` unless overridden in `opts`.
-- Sends one full text or SSML request through the official unidirectional endpoint.
-- Queues PCM chunks and pushes them with backpressure into
-  `AudioStreamGeneratorPlayback`.
+### `speak_ssml(ssml, voice_id, opts := {})`
 
-This path supports SSML through `opts["ssml"]`, while live Godot playback still
-forces PCM output.
+Purpose: submit one complete SSML request and play the returned PCM in real time.
 
-## Use Case B: True Bidirectional Streaming
+| Item | Details |
+|---|---|
+| Required arguments | `ssml`, `voice_id` |
+| Optional arguments | `opts`; see `Options Reference` |
+| Return value | `bool`; `true` on natural completion, `false` on failure or interruption |
+| Endpoint | Unidirectional WebSocket |
+| Defaults | Reuses the `speak()` playback flow and forces PCM |
 
 ```gdscript
-await voice.start_streaming("zh_male_dayi_uranus_bigtts")
+var ok := await voice.speak_ssml(
+	"<speak>Hold the bridge.<break time=\"300ms\"/>Stand firm.</speak>",
+	"zh_male_dayi_uranus_bigtts"
+)
+```
 
-for chunk in ["The bridge is ready. ", "Hold the line."]:
-	voice.feed_text(chunk)
-	await get_tree().create_timer(0.3).timeout
+For high-level SSML playback, prefer `speak_ssml()`. `opts["ssml"]` remains available for lower-level compatibility and advanced usage.
+
+### `start_streaming(voice_id, opts := {})` / `feed_text(chunk)` / `finish_streaming()`
+
+Purpose: open a bidirectional streaming session for text that arrives incrementally from an LLM or another generator. Multiple text chunks share one server session, which can preserve prosody better than separate requests.
+
+| API | Required arguments | Optional arguments | Return value |
+|---|---|---|---|
+| `start_streaming(voice_id, opts := {})` | `voice_id` | `opts` | `bool`; `true` when the session starts successfully |
+| `feed_text(chunk)` | `chunk` | none | `bool`; `true` when the text packet is sent |
+| `finish_streaming()` | none | none | No return value |
+
+```gdscript
+var ok := await voice.start_streaming("zh_male_dayi_uranus_bigtts")
+if not ok:
+	return
+
+voice.feed_text("Hold the bridge. ")
+voice.feed_text("The line must stand. ")
+voice.feed_text("No one falls back.")
 
 voice.finish_streaming()
 await voice.speak_finished
 ```
 
-Use this when text arrives incrementally from an LLM or other generator. All
-chunks share one server session, so prosody can remain more continuous than
-separate requests.
+Bidirectional playback does not start at `finish_streaming()`. `start_streaming()` prepares the player, and each `feed_text()` sends text to the server. As soon as the server returns the first audio chunk, the addon writes it into Godot's playback buffer and audio begins. `finish_streaming()` only means that no more text will be fed.
 
-## Use Case C: Official Unidirectional Streaming
+Bidirectional streaming does not support SSML. If you already have complete text, prefer `speak()`.
 
-```gdscript
-var rate := 24000
-var generator := AudioStreamGenerator.new()
-generator.mix_rate = float(rate)
-generator.buffer_length = 0.5
+### `fetch_audio(text, voice_id, opts := {})`
 
-var player := AudioStreamPlayer.new()
-add_child(player)
-player.stream = generator
-player.play()
-var playback := player.get_stream_playback() as AudioStreamGeneratorPlayback
+Purpose: call the HTTP chunked endpoint and return complete audio bytes. This is useful for pre-generated dialogue, persistent caches, cutscenes, and UI prompts.
 
-var out_session := {}
-var ok := await voice.uni_client.synthesize_streaming(
-	"Hello from the unidirectional endpoint.",
-	"zh_male_dayi_uranus_bigtts",
-	func(chunk: PackedByteArray) -> void:
-		# Convert signed 16-bit little-endian PCM into Vector2 frames here.
-		pass,
-	{"format": "pcm", "sample_rate": rate},
-	out_session,
-)
-```
-
-This is the official `/api/v3/tts/unidirectional/stream` path. It sends one
-`SendText` packet containing the full request JSON, then receives
-`TTSResponse` audio frames until `SessionFinished`.
-
-Use this lower-level path directly when you want to own playback, buffering, or
-byte handling yourself.
-
-## Use Case D: Complete Audio Bytes
+| Item | Details |
+|---|---|
+| Required arguments | `text`, `voice_id` |
+| Optional arguments | `opts`; usually pass `"format"` explicitly |
+| Return value | `PackedByteArray`; empty on failure |
+| Endpoint | HTTP chunked |
+| Defaults | Does not force PCM; output format follows `opts["format"]` and server defaults |
 
 ```gdscript
 var mp3 := await voice.fetch_audio("Welcome back, commander.", "zh_male_dayi_uranus_bigtts", {
@@ -224,58 +215,41 @@ var file := FileAccess.open("user://welcome.mp3", FileAccess.WRITE)
 file.store_buffer(mp3)
 ```
 
-`fetch_audio()` calls the HTTP chunked endpoint and returns one
-`PackedByteArray`. The HTTP path is useful for pre-generated dialogue,
-persistent caches, cutscenes, and UI prompts.
+When `opts["ssml"]` is provided, `text` may be an empty string.
 
-## Context Chaining
+### `stop()`, `current_session_id()`, and `is_speaking()`
 
-```gdscript
-voice.auto_context_chain = true
-await voice.speak("First line.", voice_id)
-await voice.speak("Second line.", voice_id)
-voice.reset_context_chain()
-```
+| API | Details |
+|---|---|
+| `stop()` | Interrupts the current high-level playback task, closes active WebSockets, and clears pending PCM chunks |
+| `current_session_id()` | Returns the last naturally completed high-level playback session id |
+| `is_speaking()` | Returns whether a high-level playback task is currently active |
 
-When `auto_context_chain` is enabled, consecutive `speak()` or
-`finish_streaming()` completions save the returned `session_id`.
-The next request passes it as `section_id` unless you already provided one.
-This is intended for TTS 2.0 continuity. Call `reset_context_chain()` when the
-speaker, scene, or dialogue context changes.
+`stop()` makes any waiting `speak()` return `false` and emits `speak_finished` if a playback task was active. Calling `stop()` while idle is safe.
 
-You can also pass context manually:
+## Options Reference
 
-```gdscript
-await voice.speak("Second line.", voice_id, {
-	"context_texts": ["Speak with a proud but restrained tone."],
-	"section_id": previous_session_id,
-})
-```
+`opts` is a flat `Dictionary`. `TtsOptions.build_req_params()` moves each key into the Volcengine `req_params` structure.
 
-## Options
+| Key | Type | Applies to | Notes |
+|---|---|---|---|
+| `format` | String | `speak` / `start_streaming` / `fetch_audio` / lower-level clients | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`; `speak()` and `start_streaming()` force PCM |
+| `sample_rate` | int | All synthesis APIs | Common values include 16000, 24000, 44100, 48000 |
+| `bit_rate` | int | `fetch_audio` / lower-level clients | MP3 only |
+| `emotion` | String | All synthesis APIs | Emotion for supported voices |
+| `emotion_scale` | int | All synthesis APIs | Commonly 1-5 |
+| `speech_rate` | int | All synthesis APIs | Commonly -50 to 100 |
+| `loudness_rate` | int | All synthesis APIs | Commonly -50 to 100 |
+| `model` | String | All synthesis APIs | For example `"seed-tts-2.0-expressive"` |
+| `ssml` | String | `speak_ssml` / `speak` / unidirectional WS / HTTP | Full `<speak>...</speak>`; bidirectional streaming does not support it; high-level code should prefer `speak_ssml()` |
+| `context_texts` | Array[String] | All synthesis APIs | TTS 2.0 context hints |
+| `section_id` | String | All synthesis APIs | Previous session id for context continuation |
+| `silence_duration` | int | All synthesis APIs | Tail silence in milliseconds |
+| `disable_markdown_filter` | bool | All synthesis APIs | Passes through Volcengine `additions` |
+| `explicit_language` | String | All synthesis APIs | For example `"zh-cn"` / `"en"` / `"ja"` |
+| `enable_subtitle` | bool | Protocol compatibility | Server may send subtitle/timestamp frames; this addon does not expose callbacks yet |
 
-`opts` is a flat `Dictionary`. `TtsOptions.build_req_params()` moves each key
-into the Volcengine `req_params` structure.
-
-| Key | Type | Notes |
-|---|---|---|
-| `format` | String | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"` |
-| `sample_rate` | int | Common values include 16000, 24000, 44100, 48000 |
-| `bit_rate` | int | MP3 only |
-| `emotion` | String | Emotion for supported voices |
-| `emotion_scale` | int | Commonly 1-5 |
-| `speech_rate` | int | Commonly -50 to 100 |
-| `loudness_rate` | int | Commonly -50 to 100 |
-| `model` | String | For example `"seed-tts-2.0-expressive"` |
-| `ssml` | String | Full `<speak>...</speak>`, supported by `speak()`, uni, and HTTP |
-| `context_texts` | Array[String] | TTS 2.0 context hints |
-| `section_id` | String | Previous session id for context continuation |
-| `silence_duration` | int | Tail silence in milliseconds |
-| `disable_markdown_filter` | bool | Passes through Volcengine `additions` |
-| `explicit_language` | String | For example `"zh-cn"` / `"en"` / `"ja"` |
-| `enable_subtitle` | bool | Server may send subtitle/timestamp frames, but this addon does not expose callbacks yet |
-
-Escape hatches:
+Advanced escape hatches:
 
 ```gdscript
 await voice.speak("Line.", voice_id, {
@@ -288,12 +262,99 @@ await voice.speak("Line.", voice_id, {
 })
 ```
 
-`raw_req_params` bypasses all merging. Use it only when Volcengine adds fields
-before this addon has first-class names for them. For high-level `speak()`, the
-raw request is sent directly to the unidirectional endpoint, so include the text
-or SSML fields required by the service when bypassing the normal option builder.
+`audio_params_extra` and `additions_extra` are merged into the corresponding protocol fields. `raw_req_params` bypasses all merging and should only be used when Volcengine adds fields before this addon has first-class names for them. For high-level `speak()`, the raw request is sent directly to the unidirectional endpoint, so include the service-required `text` or `ssml` fields yourself.
+
+## Lower-Level Clients
+
+The high-level `voice` object exposes three lower-level clients. Use them for custom playback, caching, gateway integration, protocol debugging, or raw audio chunk handling. Normal gameplay code should prefer the high-level API.
+
+### `voice.uni_client`
+
+`VolcengineTTSUnidirectionalClient` calls the official `/api/v3/tts/unidirectional/stream` WebSocket endpoint. It submits one complete text or SSML request and streams audio chunks back.
+
+| API | Details |
+|---|---|
+| `synthesize_streaming(text, voice_id, on_chunk, opts := {}, out_session := {})` | Calls `on_chunk` for every audio chunk; returns `true` on natural completion |
+| `cancel()` | Closes the current unidirectional WebSocket request |
+
+```gdscript
+var out_session := {}
+var ok := await voice.uni_client.synthesize_streaming(
+	"Hello from the unidirectional endpoint.",
+	"zh_male_dayi_uranus_bigtts",
+	func(chunk: PackedByteArray) -> void:
+		pass,
+	{"format": "pcm", "sample_rate": 24000},
+	out_session,
+)
+```
+
+### `voice.bidi_client`
+
+`VolcengineTTSBidirectionalClient` calls the official `/api/v3/tts/bidirection` WebSocket endpoint. It is useful when you need to submit text chunks and receive PCM audio in the same session.
+
+| API / Signal | Details |
+|---|---|
+| `start_session(voice_id, opts := {})` | Connects and starts a session |
+| `feed_text(chunk)` | Sends a text chunk to the current session |
+| `finish_session()` | Tells the server that all text has been sent |
+| `cancel()` | Force-closes the current session |
+| `audio_chunk_received(session_id, chunk)` | Emitted when an audio chunk arrives |
+| `session_finished(session_id)` | Emitted when the session completes naturally |
+| `session_failed(session_id, reason)` | Emitted when the session fails |
+
+### `voice.http_client`
+
+`VolcengineTTSHttpClient` calls the official `/api/v3/tts/unidirectional` HTTP chunked endpoint. It is useful when you want complete audio bytes for saving, caching, or playback through another system.
+
+| API | Details |
+|---|---|
+| `synthesize(text, voice_id, opts := {}, out_session := {})` | Waits until complete audio bytes are available; returns `PackedByteArray` |
+
+## Context, Concurrency, And Interruptions
+
+### Context Chaining
+
+```gdscript
+voice.auto_context_chain = true
+await voice.speak("First line.", voice_id)
+await voice.speak("Second line.", voice_id)
+voice.reset_context_chain()
+```
+
+When `auto_context_chain` is enabled, consecutive `speak()` or `finish_streaming()` completions save the returned `session_id`. The next request passes it as `section_id` unless you already provided one. This is intended for TTS 2.0 continuity. Call `reset_context_chain()` when the speaker, scene, or dialogue context changes.
+
+You can also pass context manually:
+
+```gdscript
+await voice.speak("Second line.", voice_id, {
+	"context_texts": ["Speak with a proud but restrained tone."],
+	"section_id": previous_session_id,
+})
+```
+
+### Concurrency And Interruptions
+
+`VolcengineStreamingVoicePlayer` runs one playback task at a time. A new `speak()` or `start_streaming()` interrupts the previous playback task before starting.
+
+```gdscript
+voice.speak("First line.", voice_id)
+voice.speak("Second line.", voice_id)
+```
+
+The interrupted `await voice.speak(...)` wakes up and returns `false`.
+
+Explicit stop:
+
+```gdscript
+voice.stop()
+```
+
+`speak_finished` means "no more audio will continue" for success, failure, or interruption. Use the `speak()` return value to distinguish natural completion from failure or interruption.
 
 ## Protocol Notes
+
+This section is for maintainers and protocol debugging. Normal gameplay code usually does not need it.
 
 Common request headers:
 
@@ -307,27 +368,20 @@ Bidirectional WebSocket flow:
 
 1. Connect to `wss://<base_url>/api/v3/tts/bidirection`.
 2. Send `StartConnection` event `1`; wait for `ConnectionStarted` event `50`.
-3. Send `StartSession` event `100` with `namespace = "BidirectionalTTS"` and
-   `req_params`.
+3. Send `StartSession` event `100` with `namespace = "BidirectionalTTS"` and `req_params`.
 4. Send one or more `TaskRequest` event `200` packets with text chunks.
 5. Send `FinishSession` event `102`.
-6. Receive audio frames, then `SessionFinished` event `152`, or
-   `SessionFailed` event `153`.
+6. Receive audio frames, then `SessionFinished` event `152`, or `SessionFailed` event `153`.
 7. Send `FinishConnection` event `2` best-effort and close.
 
-Bidirectional client packets use a binary frame header
-`[0x11, 0x14, 0x10, 0x00]`, followed by an event number, optional session id,
-and JSON payload.
+Bidirectional client packets use binary frame header `[0x11, 0x14, 0x10, 0x00]`, followed by an event number, optional session id, and JSON payload.
 
 Unidirectional WebSocket flow:
 
 1. Connect to `wss://<base_url>/api/v3/tts/unidirectional/stream`.
-2. Send one `SendText` packet with header `[0x11, 0x10, 0x10, 0x00]`. This
-   packet has no event number and contains the full request JSON.
-3. Receive sentence start `350`, audio response `352`, sentence end `351`, and
-   session finished `152` events.
-4. Send `FinishConnection` event `2` with header `[0x11, 0x14, 0x10, 0x00]`
-   and close.
+2. Send one `SendText` packet with header `[0x11, 0x10, 0x10, 0x00]`. This packet has no event number and contains the full request JSON.
+3. Receive sentence start `350`, audio response `352`, sentence end `351`, and session finished `152` events.
+4. Send `FinishConnection` event `2` with header `[0x11, 0x14, 0x10, 0x00]` and close.
 
 HTTP flow:
 
@@ -336,54 +390,21 @@ HTTP flow:
 3. Append base64-decoded `data` from `code == 0` lines.
 4. Stop when `code == 20000000`.
 
-## Interruptions And Concurrency
+## Notes And Limitations
 
-`VolcengineStreamingVoicePlayer` runs one playback task at a time. A new
-`speak()` or `start_streaming()` interrupts the previous playback task before
-starting.
+Notes:
 
-```gdscript
-voice.speak("First line.", voice_id)  # not awaited
-voice.speak("Second line.", voice_id) # interrupts the first line
-```
-
-The interrupted `await voice.speak(...)` wakes up and returns `false`.
-
-Explicit stop:
-
-```gdscript
-voice.stop()
-```
-
-`stop()` closes active WebSockets, clears pending PCM chunks, stops the
-`AudioStreamPlayer`, emits `speak_finished` if something was active, and makes
-the waiting `speak()` return `false`. Calling `stop()` while idle is safe.
-
-`speak_finished` means "no more audio will continue" for success, failure, or
-interruption. Use the `speak()` return value to distinguish natural completion
-from failure/interruption.
-
-## Gotchas
-
-- For live Godot playback, prefer PCM. Streaming MP3 chunks are not directly
-  pushed into `AudioStreamGenerator`.
-- `speak()` forces PCM even if you pass `"format": "mp3"`. Use `fetch_audio()`
-  for MP3 bytes.
-- `speak()` supports SSML because it uses the unidirectional endpoint.
-- Bidirectional streaming does not support SSML. Use `speak()`, `uni_client`, or
-  `fetch_audio()` for SSML.
-- Some `saturn_` and `_saturn_bigtts` voices do not support SSML; the addon
-  warns but lets the server decide.
-- `default_model` is only injected automatically for `saturn_` voices. Passing
-  model values to incompatible voices can trigger resource/speaker mismatch
-  errors on stricter endpoints.
+- For live Godot playback, prefer PCM. Streaming MP3 chunks cannot be pushed directly into `AudioStreamGenerator`.
+- `speak()` and `start_streaming()` force PCM even if you pass `"format": "mp3"`. Use `fetch_audio()` for MP3 bytes.
+- `speak()` and `speak_ssml()` support SSML because they use the unidirectional endpoint.
+- Bidirectional streaming does not support SSML. Use `speak_ssml()`, `uni_client`, or `fetch_audio()` for SSML.
+- Some `saturn_` and `_saturn_bigtts` voices do not support SSML; the addon warns but lets the server decide.
+- `default_model` is only injected automatically for `saturn_` voices. Passing model values to incompatible voices can trigger resource/speaker mismatch errors on stricter endpoints.
 - Timeouts are inactivity timeouts. Receiving any packet extends the deadline.
-- HTTP response chunks are not guaranteed to align with JSON line boundaries;
-  the HTTP client buffers text until newline before decoding.
-- Subtitle/timestamp frames may be returned by the server, but this addon
-  currently ignores them.
+- HTTP response chunks are not guaranteed to align with JSON line boundaries; the HTTP client buffers text until newline before decoding.
+- Subtitle/timestamp frames may be returned by the server, but this addon currently ignores them and does not expose `subtitle_received`.
 
-## Limitations
+Limitations:
 
 - SSE endpoint support is not implemented.
 - Subtitle/timestamp callbacks are not exposed yet.
