@@ -1,48 +1,48 @@
 # Godot Volcengine TTS
 
-An unofficial third-party Godot 4 client SDK for Volcengine Doubao TTS. It was originally extracted from a tactics RPG project that needed character dialogue, low-latency streamed speech, and cached voice lines.
+第三方非官方 Godot 4 火山引擎豆包 TTS 调用库。它最初来自一个战棋游戏项目，用于角色对白、低延迟流式语音和固定台词预生成。
 
-> Compliance notes, service terms, and disclaimers are kept in the repository root README.
+> 合规、服务条款和免责声明见仓库根目录 README。
 
-Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
+English documentation: [README.en.md](README.en.md)
 
-Volcengine updates available voices over time. Check the official voice list before choosing a `voice_type`:
+音色列表以火山引擎官方文档为准：
 
 https://www.volcengine.com/docs/6561/1257544
 
-## Which API Should I Use?
+## 什么时候用哪个 API
 
-Most projects should start with `VolcengineStreamingVoicePlayer`. It manages configuration, playback state, and the three lower-level clients.
+大多数项目应该优先使用 `VolcengineStreamingVoicePlayer`。它统一管理配置、播放状态和三个底层 client。
 
-| Need | Recommended API | Endpoint | Notes |
+| 需求 | 推荐 API | 端点 | 说明 |
 |---|---|---|---|
-| Play one complete text string in real time | `voice.speak(text, voice_id, opts)` | Unidirectional WS | Most common path; streams PCM into Godot playback |
-| Play one complete SSML string in real time | `voice.speak_ssml(ssml, voice_id, opts)` | Unidirectional WS | High-level SSML playback; no need to put content in `opts["ssml"]` |
-| Stream incremental text from an LLM or generator | `start_streaming()` / `feed_text()` / `finish_streaming()` | Bidirectional WS | Multiple text chunks share one server session |
-| Pre-generate, cache, or save an audio file | `voice.fetch_audio(text, voice_id, opts)` | HTTP chunked | Returns a complete `PackedByteArray` |
-| Own audio chunks, buffering, or protocol handling | Lower-level clients | Unidirectional WS / Bidirectional WS / HTTP | Advanced usage; not the first choice for normal gameplay code |
+| 已有完整文本，直接实时播放 | `voice.speak(text, voice_id, opts)` | 单向 WS | 最常用路径；返回 PCM 并通过 Godot 播放 |
+| 已有完整 SSML，直接实时播放 | `voice.speak_ssml(ssml, voice_id, opts)` | 单向 WS | 高层 SSML 播放；不需要把内容塞进 `opts["ssml"]` |
+| LLM 或生成器逐段吐文本 | `start_streaming()` / `feed_text()` / `finish_streaming()` | 双向 WS | 多个文本 chunk 共享同一个 session |
+| 预生成、缓存或保存音频文件 | `voice.fetch_audio(text, voice_id, opts)` | HTTP Chunked | 返回完整 `PackedByteArray` |
+| 自己处理音频 chunk、缓冲或协议 | 底层 client | 单向 WS / 双向 WS / HTTP | 高级用法；普通业务不建议优先使用 |
 
-Endpoint and client mapping:
+端点和 client 对应关系：
 
-| Endpoint | Class | SSML | Output |
+| 端点 | 插件类 | SSML | 输出 |
 |---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | Yes | PCM/MP3/WAV/Opus chunks |
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | No | High-level playback only supports PCM; lower-level clients can request the format specified by `opts["format"]` |
-| `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Yes | Complete audio bytes |
+| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | 是 | PCM/MP3/WAV/Opus 分块 |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | 否 | 高层播放管线仅支持 PCM；底层 client 可请求 `opts["format"]` 指定的格式 |
+| `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | 是 | 完整音频字节 |
 
-## Installation
+## 安装
 
-Copy this folder into your project:
+复制本目录到项目：
 
 ```text
 addons/godot_volcengine_tts/
 ```
 
-Then enable **Godot Volcengine TTS** in **Project Settings > Plugins**. The editor plugin only exists to satisfy Godot's addon format; runtime code uses the `class_name` scripts directly.
+然后在 **项目设置 > 插件** 启用 **Godot Volcengine TTS**。`plugin.gd` 只是为了满足 Godot 插件格式要求，运行时业务代码直接使用带 `class_name` 的脚本类。
 
-## Quick Start
+## 快速开始
 
-This is the smallest runnable example. `api_key` is required; the other fields either have defaults or are only needed for specific cases.
+下面是最小可运行示例。`api_key` 是必填配置，其它字段都有默认值或只在特定场景需要设置。
 
 ```gdscript
 extends Node
@@ -52,16 +52,16 @@ func _ready() -> void:
 	voice.api_key = "your-volcengine-api-key"
 	add_child(voice)
 
-	var ok := await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
+	var ok := await voice.speak("你好，世界。", "zh_male_dayi_uranus_bigtts")
 	if not ok:
-		push_warning("TTS playback failed or was interrupted")
+		push_warning("TTS 播放失败或被中断")
 ```
 
-The two required `speak()` arguments are the text content and the Volcengine voice string.
+`speak()` 的两个必填参数分别是文本内容和火山引擎音色字符串。
 
-## Configuration
+## 配置
 
-Configure authentication and model fields on the high-level `voice` node. `voice` copies these values to the bidirectional, unidirectional, and HTTP clients.
+推荐在高层 `voice` 节点上配置鉴权和模型参数。`voice` 会把这些值同步到双向、单向和 HTTP 三个底层 client。
 
 ```gdscript
 voice.api_key = "your-volcengine-api-key"
@@ -70,23 +70,23 @@ voice.user_uid = "player-or-device-id"
 voice.default_model = "seed-tts-2.0-expressive"
 ```
 
-Useful runtime properties:
+常用运行时属性：
 
-| Property | Owner | Default | Notes |
+| 属性 | 所属对象 | 默认值 | 说明 |
 |---|---|---|---|
-| `api_key` | `voice` and all lower-level clients | `""` | Volcengine API key; requests fail if it is not configured |
-| `resource_id` | `voice` and all lower-level clients | `"seed-tts-2.0"` | Volcengine resource id |
-| `user_uid` | `voice` and all lower-level clients | `"default"` | User/device id sent in requests |
-| `default_model` | `voice` and all lower-level clients | `""` | Default model injected for supported `saturn_` voices |
-| `audio_bus` | `voice` | `&"Master"` | Godot audio bus for high-level playback |
-| `sample_rate` | `voice` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
-| `buffer_length` | `voice` | `0.5` | `AudioStreamGenerator` buffer length |
-| `auto_context_chain` | `voice` | `false` | Reuses the previous session id as `section_id` |
-| `connect_timeout_msec` | all lower-level clients | `8000` | WebSocket/HTTP connection timeout |
-| `session_timeout_msec` | WebSocket clients | `20000` | WebSocket inactivity timeout while waiting for packets |
-| `read_timeout_msec` | HTTP client | `30000` | HTTP inactivity timeout while reading chunks |
+| `api_key` | `voice` 和所有底层 client | `""` | 火山 API key；未配置时请求会失败 |
+| `resource_id` | `voice` 和所有底层 client | `"seed-tts-2.0"` | 火山 resource id |
+| `user_uid` | `voice` 和所有底层 client | `"default"` | 请求中的用户/设备 id |
+| `default_model` | `voice` 和所有底层 client | `""` | 支持的 `saturn_` 音色会自动注入的默认 model |
+| `audio_bus` | `voice` | `&"Master"` | 高层播放使用的 Godot 音频总线 |
+| `sample_rate` | `voice` | `24000` | `speak()` / `start_streaming()` 默认 PCM 播放采样率 |
+| `buffer_length` | `voice` | `0.5` | `AudioStreamGenerator` 缓冲长度 |
+| `auto_context_chain` | `voice` | `false` | 自动把上一段 session id 作为下一段 `section_id` |
+| `connect_timeout_msec` | 所有底层 client | `8000` | WebSocket/HTTP 连接超时 |
+| `session_timeout_msec` | WebSocket client | `20000` | WebSocket 等待包的无活动超时 |
+| `read_timeout_msec` | HTTP client | `30000` | HTTP 读取 chunk 的无活动超时 |
 
-You can configure a lower-level client directly, but that only affects that client. If you later set `voice.api_key`, `voice.resource_id`, `voice.user_uid`, or `voice.default_model`, the value is copied over all three clients again.
+可以直接配置底层 client，但只会影响对应 client。之后如果再次设置 `voice.api_key`、`voice.resource_id`、`voice.user_uid` 或 `voice.default_model`，会覆盖三个 client 上的对应值。
 
 ```gdscript
 voice.bidi_client.api_key = "your-volcengine-api-key"
@@ -95,7 +95,7 @@ voice.bidi_client.user_uid = "player-or-device-id"
 voice.bidi_client.default_model = "seed-tts-2.0-expressive"
 ```
 
-Private gateways, reverse proxies, or compatible endpoints can override the lower-level clients' host, API path, and timeouts:
+如果在使用私有网关、反向代理或兼容端点时，可以覆盖底层 client 的 host、API path 和 timeout：
 
 ```gdscript
 voice.uni_client.base_url = "your-gateway.example.com"
@@ -104,17 +104,17 @@ voice.http_client.base_url = "your-gateway.example.com"
 voice.http_client.path = "/api/v3/tts/unidirectional"
 ```
 
-`base_url` is the host only. Do not include `https://`, `wss://`, or a path. WebSocket clients use `wss://`; the HTTP client connects with TLS on port 443.
+`base_url` 只填 host，不要带 `https://`、`wss://` 或路径。WebSocket client 会使用 `wss://`，HTTP client 会使用 443 端口 TLS 连接。
 
-## High-Level API
+## 高层 API
 
-`VolcengineStreamingVoicePlayer` is the recommended entry point. It synchronizes configuration to the lower-level clients and connects returned PCM bytes to Godot's `AudioStreamGenerator`.
+`VolcengineStreamingVoicePlayer` 是推荐入口。它负责同步配置到底层 client，并把 WebSocket 返回的 PCM 数据接入 Godot 的 `AudioStreamGenerator`。
 
-Signal:
+信号：
 
-- `voice.speak_finished`: emitted when high-level playback completes, fails, or is stopped.
+- `voice.speak_finished`：高层播放自然结束、失败或被停止时都会发出。
 
-Examples below assume this setup has already run:
+下面示例默认已经完成初始化：
 
 ```gdscript
 var voice := VolcengineStreamingVoicePlayer.new()
@@ -122,92 +122,94 @@ voice.api_key = "your-volcengine-api-key"
 add_child(voice)
 ```
 
-### `speak(text, voice_id, opts := {})`
+### `单向流式播放speak(text, voice_id, opts := {})`
 
-Purpose: submit one complete plain-text request and play the returned PCM in real time.
+用途：单次提交完整普通文本，并实时播放返回的 PCM。这是一种单向流式的做法。
 
-| Item | Details |
+| 项 | 说明 |
 |---|---|
-| Required arguments | `text`, `voice_id` |
-| Optional arguments | `opts`; see `Options Reference` |
-| Return value | `bool`; `true` on natural completion, `false` on failure or interruption |
-| Endpoint | Unidirectional WebSocket |
-| Defaults | Uses `pcm` if `format` is omitted; uses `voice.sample_rate` if `sample_rate` is omitted |
+| 必填参数 | `text`、`voice_id` |
+| 可选参数 | `opts`，见 `opts 参数参考` |
+| 返回值 | `bool`；自然播完为 `true`，失败或被中断为 `false` |
+| 使用端点 | 单向 WebSocket |
+| 默认行为 | 未传 `format` 时使用 `pcm`；未传 `sample_rate` 时使用 `voice.sample_rate` |
 
 ```gdscript
-var ok := await voice.speak("Hold the bridge.", "zh_male_dayi_uranus_bigtts", {
+var ok := await voice.speak("依老朽看，这桥要成。", "zh_male_dayi_uranus_bigtts", {
 	"emotion": "happy",
 	"emotion_scale": 4,
 	"speech_rate": 10,
 })
 ```
 
-`speak()` forces PCM because live Godot playback consumes PCM frames through `AudioStreamGenerator`. Even if you pass `"format": "mp3"`, it is changed to `"pcm"`; use `fetch_audio()` when you need MP3 bytes.
+`speak()` 会强制使用 PCM，因为 Godot 实时播放依赖 `AudioStreamGenerator` 消费 PCM frame。即使传入 `"format": "mp3"`，也会被改为 `"pcm"`；需要 MP3 字节时请使用 `fetch_audio()`。
 
-If another `speak()` or `start_streaming()` task is already running, the new call interrupts the old task first. The old `await voice.speak(...)` returns `false`.
+如果上一个 `speak()` 或 `start_streaming()` 还在运行，新调用会先中断旧任务。旧的 `await voice.speak(...)` 会返回 `false`。
 
-### `speak_ssml(ssml, voice_id, opts := {})`
+### `SSML单向流式播放speak_ssml(ssml, voice_id, opts := {})`
 
-Purpose: submit one complete SSML request and play the returned PCM in real time.
+用途：单次提交完整 SSML，并实时播放返回的 PCM。这是一种单向流式的做法。
 
-| Item | Details |
+| 项 | 说明 |
 |---|---|
-| Required arguments | `ssml`, `voice_id` |
-| Optional arguments | `opts`; see `Options Reference` |
-| Return value | `bool`; `true` on natural completion, `false` on failure or interruption |
-| Endpoint | Unidirectional WebSocket |
-| Defaults | Reuses the `speak()` playback flow and forces PCM |
+| 必填参数 | `ssml`、`voice_id` |
+| 可选参数 | `opts`，见 `opts 参数参考` |
+| 返回值 | `bool`；自然播完为 `true`，失败或被中断为 `false` |
+| 使用端点 | 单向 WebSocket |
+| 默认行为 | 复用 `speak()` 播放流程，强制使用 PCM |
 
 ```gdscript
 var ok := await voice.speak_ssml(
-	"<speak>Hold the bridge.<break time=\"300ms\"/>Stand firm.</speak>",
+	"<speak>依老朽看，<break time=\"300ms\"/>这桥要成。</speak>",
 	"zh_male_dayi_uranus_bigtts"
 )
 ```
 
-For high-level SSML playback, prefer `speak_ssml()`. `opts["ssml"]` remains available for lower-level compatibility and advanced usage.
+仍然可以使用`speak()`，将`text`留空，并在`opts["ssml"]`传入SSML文本，来实现SSML的单向流式播放。
 
-### `start_streaming(voice_id, opts := {})` / `feed_text(chunk)` / `finish_streaming()`
+但是在使用SSML时，更推荐使用 `speak_ssml()`。
 
-Purpose: open a bidirectional streaming session for text that arrives incrementally from an LLM or another generator. Multiple text chunks share one server session, which can preserve prosody better than separate requests. When the server returns audio chunks before the final text is sent, playback also has a chance to begin earlier.
+### `双向流式播放start_streaming(voice_id, opts := {})` / `feed_text(chunk)` / `finish_streaming()`
 
-| API | Required arguments | Optional arguments | Return value |
+用途：开启一个双向流式 session，适合 LLM 或其它生成器逐段产生文本的场景。多个文本 chunk 共享同一个服务端 session，语调延续通常会比分多次请求更自然；在服务端提前返回音频 chunk 时，也通常有机会更早开始播放。
+
+| API | 必填参数 | 可选参数 | 返回值 |
 |---|---|---|---|
-| `start_streaming(voice_id, opts := {})` | `voice_id` | `opts` | `bool`; `true` when the session starts successfully |
-| `feed_text(chunk)` | `chunk` | none | `bool`; `true` when the text packet is sent |
-| `finish_streaming()` | none | none | No return value |
+| `start_streaming(voice_id, opts := {})` | `voice_id` | `opts` | `bool`；session 启动成功为 `true` |
+| `feed_text(chunk)` | `chunk` | 无 | `bool`；文本包发送成功为 `true` |
+| `finish_streaming()` | 无 | 无 | 无返回值 |
 
 ```gdscript
 var ok := await voice.start_streaming("zh_male_dayi_uranus_bigtts")
 if not ok:
 	return
 
-voice.feed_text("Hold the bridge. ")
-voice.feed_text("The line must stand. ")
-voice.feed_text("No one falls back.")
+voice.feed_text("依老朽看，")
+voice.feed_text("这桥要成。")
+voice.feed_text("须得脚下踩稳。")
 
 voice.finish_streaming()
 await voice.speak_finished
 ```
 
-Bidirectional playback does not start at `finish_streaming()`. `start_streaming()` prepares the player, and each `feed_text()` sends text to the server. As soon as the server returns the first audio chunk, the addon writes it into Godot's playback buffer and audio begins. `finish_streaming()` only means that no more text will be fed.
+双向播放不是从 `finish_streaming()` 开始。`start_streaming()` 会先准备播放器，随后每次 `feed_text()` 都会把文本发给服务端；只要服务端返回第一个音频 chunk，插件就会立即写入 Godot 播放缓冲并开始出声。`finish_streaming()` 只表示“不会再继续喂文本”。
 
-Bidirectional streaming does not support SSML. If you already have complete text, prefer `speak()`.
+双向流式不支持 SSML。如果你已经有完整文本，优先使用 `speak()`。
 
-### `fetch_audio(text, voice_id, opts := {})`
+### `一次获取完整音频fetch_audio(text, voice_id, opts := {})`
 
-Purpose: call the HTTP chunked endpoint and return complete audio bytes. This is useful for pre-generated dialogue, persistent caches, cutscenes, and UI prompts.
+用途：通过 HTTP Chunked 端点获取完整音频字节，适合预合成固定台词、持久化缓存、cutscene 和 UI 提示音。
 
-| Item | Details |
+| 项 | 说明 |
 |---|---|
-| Required arguments | `text`, `voice_id` |
-| Optional arguments | `opts`; usually pass `"format"` explicitly |
-| Return value | `PackedByteArray`; empty on failure |
-| Endpoint | HTTP chunked |
-| Defaults | Does not force PCM; output format follows `opts["format"]` and server defaults |
+| 必填参数 | `text`、`voice_id` |
+| 可选参数 | `opts`，通常显式传入 `"format"` |
+| 返回值 | `PackedByteArray`；失败时返回空字节数组 |
+| 使用端点 | HTTP Chunked |
+| 默认行为 | 不强制 PCM；输出格式按 `opts["format"]` 和服务端默认值决定 |
 
 ```gdscript
-var mp3 := await voice.fetch_audio("Welcome back, commander.", "zh_male_dayi_uranus_bigtts", {
+var mp3 := await voice.fetch_audio("欢迎光临", "zh_male_dayi_uranus_bigtts", {
 	"format": "mp3",
 })
 
@@ -215,71 +217,77 @@ var file := FileAccess.open("user://welcome.mp3", FileAccess.WRITE)
 file.store_buffer(mp3)
 ```
 
-When `opts["ssml"]` is provided, `text` may be an empty string.
+传入 `opts["ssml"]` 时，`text` 可以为空字符串。
 
-Here is a typical cached-audio use case:
+下面是一个缓存音频的使用场景：
 
 ```gdscript
 var name = Global.player_name
 var audio_path = "user://welcome.mp3"
 
+# 准备 AudioStreamPlayer 节点
 var player = AudioStreamPlayer.new()
 add_child(player)
 
+# 检查文件是否存在
 if not FileAccess.file_exists(audio_path):
-	var mp3 := await voice.fetch_audio(
-		"Welcome back, %s." % name,
-		"zh_male_dayi_uranus_bigtts",
-		{"format": "mp3"}
-	)
-	var file := FileAccess.open(audio_path, FileAccess.WRITE)
-	file.store_buffer(mp3)
-	file.close()
-	print("Audio generated")
+    # 文件不存在，则合成音频
+    var mp3 := await voice.fetch_audio(
+        "欢迎回来，尊敬的%s。" % name,
+        "zh_male_dayi_uranus_bigtts",
+        {"format": "mp3"}
+    )
+    var file := FileAccess.open(audio_path, FileAccess.WRITE)
+    file.store_buffer(mp3)
+    file.close()
+    print("音频已生成")
 else:
-	print("Audio already exists")
+    print("音频已存在，无需合成")
 
+# 播放音频
 var stream := AudioStreamMP3.load_from_file(audio_path)
 player.stream = stream
 player.play()
 ```
 
-### `stop()`, `current_session_id()`, and `is_speaking()`
 
-| API | Details |
+
+### `stop()`、`current_session_id()` 和 `is_speaking()`
+
+| API | 说明 |
 |---|---|
-| `stop()` | Interrupts the current high-level playback task, closes active WebSockets, and clears pending PCM chunks |
-| `current_session_id()` | Returns the last naturally completed high-level playback session id |
-| `is_speaking()` | Returns whether a high-level playback task is currently active |
+| `stop()` | 中断当前高层播放任务，关闭活跃 WebSocket，清空待播放 PCM 队列 |
+| `current_session_id()` | 返回上一段自然完成的高层播放 session id |
+| `is_speaking()` | 返回当前是否有高层播放任务在运行 |
 
-`stop()` makes any waiting `speak()` return `false` and emits `speak_finished` if a playback task was active. Calling `stop()` while idle is safe.
+`stop()` 会让等待中的 `speak()` 返回 `false`，并在确实有播放任务时发出 `speak_finished`。空闲时调用 `stop()` 是安全的。
 
-## Options Reference
+## `opts` 参数参考
 
-`opts` is a flat `Dictionary`. `TtsOptions.build_req_params()` moves each key into the Volcengine `req_params` structure.
+`opts` 是一层扁平 `Dictionary`。`TtsOptions.build_req_params()` 会把各字段归位到火山协议需要的 `req_params` 结构。
 
-| Key | Type | Applies to | Notes |
+| 键 | 类型 | 适用 API | 说明 |
 |---|---|---|---|
-| `format` | String | `speak` / `start_streaming` / `fetch_audio` / lower-level clients | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`; high-level real-time playback only supports PCM, while lower-level clients and `fetch_audio()` can request other formats |
-| `sample_rate` | int | All synthesis APIs | Common values include 16000, 24000, 44100, 48000 |
-| `bit_rate` | int | `fetch_audio` / lower-level clients | MP3 only |
-| `emotion` | String | All synthesis APIs | Emotion for supported voices |
-| `emotion_scale` | int | All synthesis APIs | Commonly 1-5 |
-| `speech_rate` | int | All synthesis APIs | Commonly -50 to 100 |
-| `loudness_rate` | int | All synthesis APIs | Commonly -50 to 100 |
-| `model` | String | All synthesis APIs | For example `"seed-tts-2.0-expressive"` |
-| `ssml` | String | `speak_ssml` / `speak` / unidirectional WS / HTTP | Full `<speak>...</speak>`; bidirectional streaming does not support it; high-level code should prefer `speak_ssml()` |
-| `context_texts` | Array[String] | All synthesis APIs | TTS 2.0 context hints |
-| `section_id` | String | All synthesis APIs | Previous session id for context continuation |
-| `silence_duration` | int | All synthesis APIs | Tail silence in milliseconds |
-| `disable_markdown_filter` | bool | All synthesis APIs | Passes through Volcengine `additions` |
-| `explicit_language` | String | All synthesis APIs | For example `"zh-cn"` / `"en"` / `"ja"` |
-| `enable_subtitle` | bool | Protocol compatibility | Server may send subtitle/timestamp frames; this addon does not expose callbacks yet |
+| `format` | String | `speak` / `start_streaming` / `fetch_audio` / 底层 client | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`；高层实时播放只支持 PCM，底层 client 和 `fetch_audio()` 可请求其它格式 |
+| `sample_rate` | int | 所有合成 API | 常用 16000、24000、44100、48000 |
+| `bit_rate` | int | `fetch_audio` / 底层 client | 仅 MP3 生效 |
+| `emotion` | String | 所有合成 API | 多情感音色的情绪 |
+| `emotion_scale` | int | 所有合成 API | 常用 1-5 |
+| `speech_rate` | int | 所有合成 API | 常用 -50 到 100 |
+| `loudness_rate` | int | 所有合成 API | 常用 -50 到 100 |
+| `model` | String | 所有合成 API | 例如 `"seed-tts-2.0-expressive"` |
+| `ssml` | String | `speak_ssml` / `speak` / 单向 WS / HTTP | 完整 `<speak>...</speak>`；双向流式不支持；高层推荐用 `speak_ssml()` |
+| `context_texts` | Array[String] | 所有合成 API | TTS 2.0 上下文提示 |
+| `section_id` | String | 所有合成 API | 上一段 session id，用于上下文延续 |
+| `silence_duration` | int | 所有合成 API | 句尾静音，单位毫秒 |
+| `disable_markdown_filter` | bool | 所有合成 API | 透传到火山 `additions` |
+| `explicit_language` | String | 所有合成 API | 例如 `"zh-cn"` / `"en"` / `"ja"` |
+| `enable_subtitle` | bool | 底层协议兼容 | 服务端可能返回字幕/时间戳帧；当前插件尚未暴露回调 |
 
-Advanced escape hatches:
+高级逃生口：
 
 ```gdscript
-await voice.speak("Line.", voice_id, {
+await voice.speak("台词。", voice_id, {
 	"audio_params_extra": {"future_audio_field": "value"},
 	"additions_extra": {"with_frontend_text": true},
 	"raw_req_params": {
@@ -289,25 +297,25 @@ await voice.speak("Line.", voice_id, {
 })
 ```
 
-`audio_params_extra` and `additions_extra` are merged into the corresponding protocol fields. `raw_req_params` bypasses all merging and should only be used when Volcengine adds fields before this addon has first-class names for them. For high-level `speak()`, the raw request is sent directly to the unidirectional endpoint, so include the service-required `text` or `ssml` fields yourself.
+`audio_params_extra` 和 `additions_extra` 会合并进对应协议字段。`raw_req_params` 会绕过所有合并逻辑，只有在火山新增字段、插件还没有命名支持时才建议使用。对高层 `speak()` 来说，`raw_req_params` 会直接发给单向端点；绕过普通参数构造时，需要自行包含服务端要求的 `text` 或 `ssml` 字段。
 
-## Lower-Level Clients
+## 底层 Client
 
-The high-level `voice` object exposes three lower-level clients. Use them for custom playback, caching, gateway integration, protocol debugging, or raw audio chunk handling. Normal gameplay code should prefer the high-level API.
+高层 `voice` 会公开三个底层 client。它们适合自定义播放、缓存、网关接入、协议调试或处理原始音频 chunk。普通业务优先使用高层 API。
 
 ### `voice.uni_client`
 
-`VolcengineTTSUnidirectionalClient` calls the official `/api/v3/tts/unidirectional/stream` WebSocket endpoint. It submits one complete text or SSML request and streams audio chunks back.
+`VolcengineTTSUnidirectionalClient` 调用官方 `/api/v3/tts/unidirectional/stream` WebSocket 端点，这是官方的单向流式端点的一层封装，支持一次提交完整文本或 SSML，然后流式返回音频 chunk。
 
-| API | Details |
+| API | 说明 |
 |---|---|
-| `synthesize_streaming(text, voice_id, on_chunk, opts := {}, out_session := {})` | Calls `on_chunk` for every audio chunk; returns `true` on natural completion |
-| `cancel()` | Closes the current unidirectional WebSocket request |
+| `synthesize_streaming(text, voice_id, on_chunk, opts := {}, out_session := {})` | 每收到一个音频块就调用 `on_chunk`；自然结束返回 `true` |
+| `cancel()` | 关闭当前单向 WebSocket 请求 |
 
 ```gdscript
 var out_session := {}
 var ok := await voice.uni_client.synthesize_streaming(
-	"Hello from the unidirectional endpoint.",
+	"这是官方单向流式端点。",
 	"zh_male_dayi_uranus_bigtts",
 	func(chunk: PackedByteArray) -> void:
 		pass,
@@ -318,135 +326,135 @@ var ok := await voice.uni_client.synthesize_streaming(
 
 ### `voice.bidi_client`
 
-`VolcengineTTSBidirectionalClient` calls the official `/api/v3/tts/bidirection` WebSocket endpoint. It is useful when you need to submit text chunks and receive audio in the same session; the lower-level audio format follows `opts["format"]` passed to `start_session()`.
+`VolcengineTTSBidirectionalClient` 调用官方 `/api/v3/tts/bidirection` WebSocket 端点。它适合逐段提交文本，并在同一个 session 中接收音频；底层音频格式由 `start_session()` 的 `opts["format"]` 决定。
 
-| API / Signal | Details |
+| API / 信号 | 说明 |
 |---|---|
-| `start_session(voice_id, opts := {})` | Connects and starts a session |
-| `feed_text(chunk)` | Sends a text chunk to the current session |
-| `finish_session()` | Tells the server that all text has been sent |
-| `cancel()` | Force-closes the current session |
-| `audio_chunk_received(session_id, chunk)` | Emitted when an audio chunk arrives |
-| `session_finished(session_id)` | Emitted when the session completes naturally |
-| `session_failed(session_id, reason)` | Emitted when the session fails |
+| `start_session(voice_id, opts := {})` | 建立连接并启动 session |
+| `feed_text(chunk)` | 向当前 session 发送文本 chunk |
+| `finish_session()` | 通知服务端文本已发送完毕 |
+| `cancel()` | 强制关闭当前 session |
+| `audio_chunk_received(session_id, chunk)` | 收到音频块时发出 |
+| `session_finished(session_id)` | session 自然完成时发出 |
+| `session_failed(session_id, reason)` | session 失败时发出 |
 
 ### `voice.http_client`
 
-`VolcengineTTSHttpClient` calls the official `/api/v3/tts/unidirectional` HTTP chunked endpoint. It is useful when you want complete audio bytes for saving, caching, or playback through another system.
+`VolcengineTTSHttpClient` 调用官方 `/api/v3/tts/unidirectional` HTTP Chunked 端点。它适合获取完整音频字节后保存、缓存或交给其它播放器。
 
-| API | Details |
+| API | 说明 |
 |---|---|
-| `synthesize(text, voice_id, opts := {}, out_session := {})` | Waits until complete audio bytes are available; returns `PackedByteArray` |
+| `synthesize(text, voice_id, opts := {}, out_session := {})` | 阻塞直到拿到完整音频字节；返回 `PackedByteArray` |
 
-## Context, Concurrency, And Interruptions
+## 上下文、并发与中断
 
-### Context Chaining
+### 上下文延续
 
 ```gdscript
 voice.auto_context_chain = true
-await voice.speak("First line.", voice_id)
-await voice.speak("Second line.", voice_id)
+await voice.speak("第一句", voice_id)
+await voice.speak("第二句", voice_id)
 voice.reset_context_chain()
 ```
 
-When `auto_context_chain` is enabled, consecutive `speak()` or `finish_streaming()` completions save the returned `session_id`. The next request passes it as `section_id` unless you already provided one. This is intended for TTS 2.0 continuity. Call `reset_context_chain()` when the speaker, scene, or dialogue context changes.
+开启 `auto_context_chain` 后，连续 `speak()` 或 `finish_streaming()` 完成时会保存返回的 `session_id`。下一次请求如果没有显式传 `section_id`，插件会自动把上一段 `session_id` 作为 `section_id` 传入。这个能力主要用于 TTS 2.0 的上下文延续。换角色、换场景或需要断开语境时调用 `reset_context_chain()`。
 
-You can also pass context manually:
+也可以手动传上下文：
 
 ```gdscript
-await voice.speak("Second line.", voice_id, {
-	"context_texts": ["Speak with a proud but restrained tone."],
+await voice.speak("第二句", voice_id, {
+	"context_texts": ["用骄傲但克制的语气说话。"],
 	"section_id": previous_session_id,
 })
 ```
 
-### Concurrency And Interruptions
+### 并发与中断
 
-`VolcengineStreamingVoicePlayer` runs one playback task at a time. A new `speak()` or `start_streaming()` interrupts the previous playback task before starting.
+`VolcengineStreamingVoicePlayer` 同一时间只跑一个播放任务。新的 `speak()` 或 `start_streaming()` 会先中断旧任务，再启动新任务。
 
 ```gdscript
-voice.speak("First line.", voice_id)
-voice.speak("Second line.", voice_id)
+voice.speak("第一句", voice_id)
+voice.speak("第二句", voice_id)
 ```
 
-The interrupted `await voice.speak(...)` wakes up and returns `false`.
+被中断的 `await voice.speak(...)` 会醒来并返回 `false`。
 
-Explicit stop:
+主动停止：
 
 ```gdscript
 voice.stop()
 ```
 
-`speak_finished` means "no more audio will continue" for success, failure, or interruption. Use the `speak()` return value to distinguish natural completion from failure or interruption.
+`speak_finished` 的语义是“不会再继续出声”，包括成功、失败和中断。要区分自然完成与失败/中断，请看 `speak()` 的返回值。
 
-## Protocol Notes
+## 协议细节
 
-This section is for maintainers and protocol debugging. Normal gameplay code usually does not need it.
+这一节面向维护者和需要调试协议的人。普通业务开发通常不需要阅读。
 
-Common request headers:
+通用请求头：
 
 - `X-Api-Key: <api_key>`
 - `X-Api-Resource-Id: <resource_id>`
-- `X-Api-Connect-Id: <uuid>` for WebSocket connections
-- `X-Api-Request-Id: <uuid>` for HTTP requests
+- `X-Api-Connect-Id: <uuid>`，WebSocket 使用
+- `X-Api-Request-Id: <uuid>`，HTTP 使用
 - `X-Control-Require-Usage-Tokens-Return: *`
 
-Bidirectional WebSocket flow:
+双向 WebSocket 流程：
 
-1. Connect to `wss://<base_url>/api/v3/tts/bidirection`.
-2. Send `StartConnection` event `1`; wait for `ConnectionStarted` event `50`.
-3. Send `StartSession` event `100` with `namespace = "BidirectionalTTS"` and `req_params`.
-4. Send one or more `TaskRequest` event `200` packets with text chunks.
-5. Send `FinishSession` event `102`.
-6. Receive audio frames, then `SessionFinished` event `152`, or `SessionFailed` event `153`.
-7. Send `FinishConnection` event `2` best-effort and close.
+1. 连接 `wss://<base_url>/api/v3/tts/bidirection`。
+2. 发送 `StartConnection` 事件 `1`，等待 `ConnectionStarted` 事件 `50`。
+3. 发送 `StartSession` 事件 `100`，payload 包含 `namespace = "BidirectionalTTS"` 和 `req_params`。
+4. 发送一个或多个 `TaskRequest` 事件 `200` 文本包。
+5. 发送 `FinishSession` 事件 `102`。
+6. 接收音频帧，直到 `SessionFinished` 事件 `152`；失败时可能收到 `SessionFailed` 事件 `153`。
+7. 尽力发送 `FinishConnection` 事件 `2` 并关闭连接。
 
-Bidirectional client packets use binary frame header `[0x11, 0x14, 0x10, 0x00]`, followed by an event number, optional session id, and JSON payload.
+双向 client 包使用二进制帧头 `[0x11, 0x14, 0x10, 0x00]`，后面依次是事件号、可选 session id 和 JSON payload。
 
-Unidirectional WebSocket flow:
+单向 WebSocket 流程：
 
-1. Connect to `wss://<base_url>/api/v3/tts/unidirectional/stream`.
-2. Send one `SendText` packet with header `[0x11, 0x10, 0x10, 0x00]`. This packet has no event number and contains the full request JSON.
-3. Receive sentence start `350`, audio response `352`, sentence end `351`, and session finished `152` events.
-4. Send `FinishConnection` event `2` with header `[0x11, 0x14, 0x10, 0x00]` and close.
+1. 连接 `wss://<base_url>/api/v3/tts/unidirectional/stream`。
+2. 发送一个 `SendText` 包，帧头 `[0x11, 0x10, 0x10, 0x00]`。这个包没有事件号，payload 是完整请求 JSON。
+3. 接收句首 `350`、音频响应 `352`、句尾 `351`、session 结束 `152` 等事件。
+4. 发送 `FinishConnection` 事件 `2`，帧头 `[0x11, 0x14, 0x10, 0x00]`，然后关闭。
 
-HTTP flow:
+HTTP 流程：
 
-1. POST JSON to `https://<base_url>/api/v3/tts/unidirectional`.
-2. Read a chunked response where each line is JSON.
-3. Append base64-decoded `data` from `code == 0` lines.
-4. Stop when `code == 20000000`.
+1. POST JSON 到 `https://<base_url>/api/v3/tts/unidirectional`。
+2. 读取 HTTP Chunked 响应；响应体每行是一个 JSON。
+3. 对 `code == 0` 且 `data` 为字符串的行做 base64 解码并 append。
+4. 遇到 `code == 20000000` 视为正常结束。
 
-## Notes And Limitations
+## 注意事项与限制
 
-Notes:
+注意事项：
 
-- High-level real-time Godot playback only supports PCM. Streaming MP3/Opus chunks cannot be pushed directly into `AudioStreamGenerator`.
-- `speak()` forces PCM even if you pass `"format": "mp3"`; `start_streaming()` currently does not reject non-PCM formats, but its high-level playback pipeline is still only suitable for PCM. Use `fetch_audio()` or lower-level clients when you need to handle MP3 bytes yourself.
-- `speak()` and `speak_ssml()` support SSML because they use the unidirectional endpoint.
-- Bidirectional streaming does not support SSML. Use `speak_ssml()`, `uni_client`, or `fetch_audio()` for SSML.
-- Some `saturn_` and `_saturn_bigtts` voices do not support SSML; the addon warns but lets the server decide.
-- `default_model` is only injected automatically for `saturn_` voices. Passing model values to incompatible voices can trigger resource/speaker mismatch errors on stricter endpoints.
-- Timeouts are inactivity timeouts. Receiving any packet extends the deadline.
-- HTTP response chunks are not guaranteed to align with JSON line boundaries; the HTTP client buffers text until newline before decoding.
-- Subtitle/timestamp frames may be returned by the server, but this addon currently ignores them and does not expose `subtitle_received`.
+- Godot 高层实时播放只支持 PCM。流式 MP3/Opus 分块不能直接写入 `AudioStreamGenerator`。
+- `speak()` 即使传入 `"format": "mp3"` 也会强制改成 PCM；`start_streaming()` 当前没有拦截非 PCM，但高层播放管线仍然只适合 PCM。需要 MP3 字节请用 `fetch_audio()` 或底层 client 自行处理。
+- `speak()` 和 `speak_ssml()` 支持 SSML，因为它们使用单向端点。
+- 双向流式不支持 SSML。需要 SSML 请走 `speak_ssml()`、`uni_client` 或 `fetch_audio()`。
+- 部分 `saturn_` 和 `_saturn_bigtts` 音色不支持 SSML；插件只警告，最终由服务端决定。
+- `default_model` 目前只会自动注入到 `saturn_` 音色。给不兼容音色乱传 model，在较严格端点上可能触发 resource/speaker mismatch。
+- 超时是“无活动”超时：每收到一个包都会刷新 deadline。
+- HTTP 返回的 chunk 不一定按 JSON 行对齐；HTTP client 会先缓存文本，遇到换行再解析。
+- 服务端可能返回字幕/时间戳帧，但当前插件会忽略，尚未提供 `subtitle_received` 回调。
 
-Limitations:
+限制：
 
-- SSE endpoint support is not implemented.
-- Subtitle/timestamp callbacks are not exposed yet.
-- Voice lists are not bundled. The caller owns the `voice_type` string.
-- System TTS fallback is not built in. Handle failures in your own game code.
+- 暂不支持 SSE 端点。
+- 暂不提供字幕/时间戳回调。
+- 不内置音色清单，`voice_id` 是由调用方维护的 `voice_type` 字符串。
+- 不内置系统 TTS 兜底，失败处理由调用方决定。
 
-## References
+# 参考
 
-- Volcengine TTS API documentation: https://www.volcengine.com/docs/6561/1598757
-- Volcengine TTS API documentation: https://www.volcengine.com/docs/6561/1719100
-- Volcengine TTS API documentation: https://www.volcengine.com/docs/6561/1329505
-- Volcengine speech synthesis voice list: https://www.volcengine.com/docs/6561/1257544
-- Volcengine SDK compliance / privacy documentation: https://www.volcengine.com/docs/6561/116711
-- Volcengine terms of service: https://www.volcengine.com/docs/6256/64903
+- 火山引擎 TTS 接口文档：https://www.volcengine.com/docs/6561/1598757
+- 火山引擎 TTS 接口文档：https://www.volcengine.com/docs/6561/1719100
+- 火山引擎 TTS 接口文档：https://www.volcengine.com/docs/6561/1329505
+- 火山引擎语音合成大模型音色列表：https://www.volcengine.com/docs/6561/1257544
+- 火山引擎 SDK 合规 / 隐私相关文档：https://www.volcengine.com/docs/6561/116711
+- 火山引擎服务条款：https://www.volcengine.com/docs/6256/64903
 
-## License
+## 许可证
 
-MIT. See `LICENSE`.
+本项目使用MIT许可证。详见 `LICENSE`。
