@@ -53,7 +53,7 @@ func _ready() -> void:
 	# 添加voice节点到当前场景
 	add_child(voice)
 	
-	# 播放第一句话
+	# 播放第一句话，使用单向流式方法
 	await voice.speak("你好，世界。", "zh_male_dayi_uranus_bigtts") 
 	# 参数分别是文本内容与所使用的音色（音色字符串请参考火山引擎文档）
 	
@@ -134,6 +134,7 @@ WebSocket client 使用 `wss://`，HTTP client 使用 443 端口 TLS 连接。
 | API | 端点 | 结果 |
 |---|---|---|
 | `voice.speak(text, voice_id, opts)` | 单向 WS | 单次提交完整文本，流式播放 PCM；自然完成时返回 `true` |
+| `voice.speak_ssml(ssml, voice_id, opts)` | 单向 WS | 单次提交完整 SSML，流式播放 PCM；自然完成时返回 `true` |
 | `voice.start_streaming(voice_id, opts)` / `feed_text(chunk)` / `finish_streaming()` | 双向 WS | 逐段提交文本，播放同一个 session 里的 PCM 流 |
 | `voice.fetch_audio(text, voice_id, opts)` | HTTP Chunked | 返回完整音频字节 |
 | `voice.stop()` | 当前高层播放任务 | 中断播放，并让等待中的 `speak()` 返回 `false` |
@@ -156,6 +157,7 @@ add_child(voice)
 | API | 必填参数 | 可选参数 | 返回值 |
 |---|---|---|---|
 | `speak(text, voice_id, opts := {})` | `text`、`voice_id` | `opts` | `bool`，自然播完为 `true`，失败或被中断为 `false` |
+| `speak_ssml(ssml, voice_id, opts := {})` | `ssml`、`voice_id` | `opts` | `bool`，自然播完为 `true`，失败或被中断为 `false` |
 | `start_streaming(voice_id, opts := {})` | `voice_id` | `opts` | `bool`，双向 session 启动成功为 `true` |
 | `feed_text(chunk)` | `chunk` | 无 | `bool`，文本 chunk 发送成功为 `true` |
 | `finish_streaming()` | 无 | 无 | 无返回值；结束后等待 `speak_finished` |
@@ -178,7 +180,7 @@ var ok := await voice.speak("依老朽看，这桥要成。", "zh_male_dayi_uran
 
 参数说明：
 
-- `text`：要合成的普通文本。传入 `opts["ssml"]` 时可以为空字符串。
+- `text`：要合成的普通文本。SSML 推荐使用 `speak_ssml()`。
 - `voice_id`：火山引擎音色字符串，例如 `"zh_male_dayi_uranus_bigtts"`。
 - `opts`：可选。省略时使用默认播放参数；常用键见下方 `opts 参数`。
 
@@ -187,14 +189,17 @@ var ok := await voice.speak("依老朽看，这桥要成。", "zh_male_dayi_uran
 消费的是 PCM frame，`speak()` 会强制使用 `format = "pcm"`；未传 `sample_rate` 时使用
 `voice.sample_rate`。
 
-`opts["ssml"]` 不是默认开启的开关。只有显式传入非空 SSML 字符串时，请求才会走
-SSML 内容；否则会使用 `text` 参数。
+SSML 推荐使用 `speak_ssml()`，不要在高层调用里传空文本再把内容塞进 `opts["ssml"]`：
 
 ```gdscript
-await voice.speak("", "zh_male_dayi_uranus_bigtts", {
-	"ssml": "<speak>依老朽看，<break time=\"300ms\"/>这桥要成。</speak>",
-})
+await voice.speak_ssml(
+	"<speak>依老朽看，<break time=\"300ms\"/>这桥要成。</speak>",
+	"zh_male_dayi_uranus_bigtts"
+)
 ```
+
+`opts["ssml"]` 仍然保留给低层兼容和高级用法；`speak_ssml()` 内部会把传入的
+SSML 写入这个字段并复用 `speak()` 的播放流程。
 
 ### 双向流式
 

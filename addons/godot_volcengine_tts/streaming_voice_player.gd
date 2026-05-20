@@ -160,6 +160,13 @@ func speak(text: String, voice: String, opts: Dictionary = {}) -> bool:
 	return false
 
 
+## 一次性给 SSML，流式播放。等价于 speak("", voice, opts + {"ssml": ssml})。
+func speak_ssml(ssml: String, voice: String, opts: Dictionary = {}) -> bool:
+	var effective_opts := opts.duplicate()
+	effective_opts["ssml"] = ssml
+	return await speak("", voice, effective_opts)
+
+
 # ─── 用法 B：真双向（走双向 WS）─────────────────────────────
 
 func start_streaming(voice: String, opts: Dictionary = {}) -> bool:
