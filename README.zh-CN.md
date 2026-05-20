@@ -8,9 +8,10 @@
   <p>在 Godot 4.4+ 中直接流式播放、生成和预保存火山引擎豆包 TTS 音频</p>
 </div>
 
+
 Godot Volcengine TTS 是一个面向 Godot 4.4+ 的第三方火山引擎语音合成大模型 SDK，封装了火山引擎语音合成大模型的公开 API。
 
-本项目用于在游戏和交互项目中接入火山引擎豆包语音合成。它提供高度封装的播放节点，也保留双向 WebSocket、单向流式和 HTTP 合成三个底层 Client，因此既可以用于实时角色对白、LLM 生成语音，也可以用于 UI 提示音、过场动画和固定台词缓存。
+本项目用于在游戏和交互项目中接入火山引擎豆包语音合成。它提供**高度封装的、使用简便**的播放节点，也保留了双向 WebSocket、单向流式和 HTTP 合成三个底层 Client，因此既可以用于实时角色对白、LLM 生成语音，也可以用于 UI 提示音、过场动画和固定台词缓存。
 
 本项目的测试场景也提供将合成语音保存到本地的模式。开发者只需将项目 clone 到本地并使用 Godot 引擎打开，即可直接测试接口，并为游戏预生成语音，从而减少运行期重复合成带来的成本开销。
 
@@ -31,22 +32,49 @@ Godot Volcengine TTS 是一个面向 Godot 4.4+ 的第三方火山引擎语音�
 
 ## 功能
 
-支持三种常见合成路径：
+该插件封装了火山引擎官方提供的三个端点：
 
-| 端点 | 插件类 | 用途 | SSML | 输出 |
-|---|---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming 增量文本 | 否 | 用于播放的 PCM 流 |
-| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | 高层 `speak()` 播放和一次提交文本流式返回 | 是 | PCM/MP3/WAV/Opus 分块 |
-| `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | 预生成或缓存完整音频 | 是 | 完整音频字节 |
+- `wss://openspeech.bytedance.com/api/v3/tts/bidirection`
+- `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream`
+- `https://openspeech.bytedance.com/api/v3/tts/unidirectional`
 
-一个容易混淆的实现细节：高层 `VolcengineStreamingVoicePlayer.speak()`
-当前走的是官方单向 WebSocket 端点。它一次性发送完整文本或 SSML 请求，
-再把服务端返回的 PCM 音频块流式播放。双向端点只保留给
-`start_streaming()` / `feed_text()` / `finish_streaming()`，用于 LLM 或其他生成器逐段吐文本的场景。
+并提供了以下三种底层封装：
+
+- `VolcengineTTSBidirectionalClient`
+- `VolcengineTTSUnidirectionalClient`
+- `VolcengineTTSHttpClient`
+
+和以下几种高层封装：
+
+- `speak() `单向流式播放
+- `speak_ssml() `使用SSML的单向流式播放
+- `start_streaming()` 双向流式播放，适用于流式获取 LLM 的输出并流式合成音频的使用场景
+- `fetch_audio()` 一次性获取完整音频
 
 ## 安装
 
-复制插件目录到你的项目：
+**通过Godot资源库（Godot Asset Library）安装**
+
+本插件已经上传到 Godot Asset Library ，地址如下：
+
+```
+https://godotengine.org/asset-library/asset/5153
+```
+
+您可以直接打开 Godot 引擎，并在资源库搜索`Godot Volcengine TTS`来安装本插件，
+
+然后在 **项目设置 > 插件** 启用 **Godot Volcengine TTS**。
+
+> 注意：
+>
+> - 由于 Godot Asset Library 审核原因，因此其版本可能会滞后于Github仓库，请在安装时留意
+>
+> - Asset Library 下载包通过 `.gitattributes` 限制为只包含 `addons/`，因此测试场景、截图和仓库文档不会污染用户项目。
+
+**通过Github仓库安装**：
+
+1. 克隆仓库到本地
+2. 复制插件目录到你的项目：
 
 ```text
 addons/godot_volcengine_tts/
@@ -54,48 +82,48 @@ addons/godot_volcengine_tts/
 
 然后在 **项目设置 > 插件** 启用 **Godot Volcengine TTS**。
 
-Asset Library 下载包通过 `.gitattributes` 限制为只包含 `addons/`，因此测试场景、截图和仓库文档不会污染用户项目。
-
 ## 简短示例
 
-### 单句流式播放
+## 初始化voice节点
 
 ```gdscript
-extends Node
+# 初始化节点
+var voice := VolcengineStreamingVoicePlayer.new()
 
-func _ready() -> void:
-	var voice := VolcengineStreamingVoicePlayer.new()
-	voice.api_key = "your-volcengine-api-key"
-	voice.resource_id = "seed-tts-2.0"
-	voice.user_uid = "player-or-device-id"
-	voice.default_model = "seed-tts-2.0-expressive"
-	add_child(voice)
+# 配置参数
+voice.api_key = "your-volcengine-api-key"
+voice.resource_id = "seed-tts-2.0"
+voice.user_uid = "player-or-device-id"
+voice.default_model = "seed-tts-2.0-expressive"
 
-	await voice.speak("你好，Godot。", "zh_male_dayi_uranus_bigtts")
+# 添加到场景
+add_child(voice)
 ```
 
-`speak()` 内部使用官方单向 WebSocket：一次性发送完整文本或 SSML 请求，
-并把返回的 PCM 音频流式送入 Godot 播放。
+### 单向流式播放
 
-`api_key` 默认是空字符串。未配置时，高层 `speak()` 会给出 warning 并返回
-`false`。底层 client 仍然公开，适合自定义网关、直接处理 chunk、获取 HTTP
-音频字节或自行控制双向流式等高级场景。
+```gdscript
+await voice.speak("你好，Godot。", "zh_male_dayi_uranus_bigtts") # 普通的单向流式播放
 
-底层所有 client 都会携带火山引擎请求头，包括 `X-Api-Key`、
-`X-Api-Resource-Id`、`X-Api-Connect-Id` 或 `X-Api-Request-Id`，以及
-`X-Control-Require-Usage-Tokens-Return: *`。调用参数由
-`TtsOptions.build_req_params()` 统一组装，它会把
-`{"format": "pcm", "speech_rate": 10}` 这类 Godot 扁平字典转换成火山协议的
-`req_params`。
+await voice.speak_ssml("<speak>你好，Godot。</speak>", "zh_male_dayi_uranus_bigtts") # 使用SSML的单向流式播放
+```
 
-### 双向流式
+### 双向流式播放
 
 ```gdscript
 await voice.start_streaming("zh_male_dayi_uranus_bigtts")
 
-for chunk in ["桥已经修好了。", "守住阵线。"]:
-	voice.feed_text(chunk)
-	await get_tree().create_timer(0.25).timeout
+# ... 等待文本
+
+voice.feed_text(chunk_0) # 获得第0段文本，并传输给TTS服务
+
+# ... 等待文本
+
+voice.feed_text(chunk_1)  # 获得第1段文本，并传输给TTS服务
+
+# ... 等待文本
+
+voice.feed_text(chunk_2)  # 获得第2段文本，并传输给TTS服务
 
 voice.finish_streaming()
 await voice.speak_finished
@@ -114,20 +142,19 @@ file.store_buffer(mp3)
 
 ## 测试场景
 
-仓库包含本地测试场景 `scenes/test/tts_test.tscn`。它是一个中英文双语验证界面，可以输入火山引擎 API Key、resource ID、model、voice type、sample rate 和测试文本，并验证 HTTP MP3、单向 WebSocket PCM、双向分段流式和停止行为。
+仓库包含本地测试场景 `scenes/test/tts_test.tscn`，您可以将仓库clone到本地并使用Godot引擎打开来使用。
 
-测试场景刻意覆盖了高层和低层两种调用方式：HTTP 按钮调用 `voice.fetch_audio()`；
-单向 WS 按钮直接调用 `voice.uni_client.synthesize_streaming()`，并把 PCM 手动送入
-`AudioStreamGenerator`；双向 WS 按钮调用 `voice.start_streaming()`、
-`voice.feed_text()` 和 `voice.finish_streaming()`。
+它是一个中英文双语验证界面，可以输入火山引擎 API Key、resource ID、model、voice type、sample rate 和测试文本，并验证单向流式、双向流式、一次获取完整音频和停止行为。
 
 ![Volcengine TTS 测试场景，展示 API、模型、音色、文本、HTTP、单向流式、双向流式和停止控制](docs/images/screenshot_0.png)
 
-测试场景还提供 **Save Audio Locally** 模式，可将 HTTP 合成得到的音频直接保存到指定目录。保存界面支持选择输出目录、配置文件名模板、设置当前索引，并可在每次保存后自动递增索引，适合在开发阶段批量预生成固定台词音频。
+>  **注意：为了方便开发者使用火山引擎“预制”游戏音频，该测试场景中提供了将音频保存到本地的功能。**
+
+可将 HTTP 合成得到的音频直接保存到指定目录。保存界面支持选择输出目录、配置文件名模板、设置当前索引，并可在每次保存后自动递增索引，适合在开发阶段批量预生成固定台词音频。
 
 ![Volcengine TTS 测试场景的本地保存模式，展示保存目录、文件名模板、索引和自动递增选项](docs/images/screenshot_1.png)
 
-测试场景只用于仓库内发布前验证，不会进入 Asset Library 下载包。
+测试场景不会进入 Asset Library 下载包。
 
 ## 音色
 

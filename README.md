@@ -49,7 +49,7 @@ It supports the three common synthesis paths:
 
 | Endpoint | Addon class | Use case | SSML | Output |
 |---|---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming with incremental text | No | PCM streaming for playback |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming with incremental text | No | High-level playback only supports PCM; lower-level clients can request other formats |
 | `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | High-level `speak()` playback and one-request streaming | Yes | PCM/MP3/WAV/Opus chunks |
 | `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Pre-generate or cache complete audio files | Yes | Complete audio bytes |
 
@@ -138,11 +138,11 @@ model, voice type, sample rate, and sample text, then testing HTTP MP3
 synthesis, unidirectional WebSocket PCM streaming, bidirectional chunked
 streaming, and stop behavior.
 
-The test scene intentionally exercises both layers: the HTTP button calls
-`voice.fetch_audio()`, the unidirectional button calls
-`voice.uni_client.synthesize_streaming()` directly and pushes PCM into
-`AudioStreamGenerator`, and the bidirectional button calls
-`voice.start_streaming()`, `voice.feed_text()`, and `voice.finish_streaming()`.
+The test scene exercises the high-level playback node and HTTP byte path: the
+HTTP button calls `voice.fetch_audio()`, the unidirectional button calls
+`voice.speak()`, the SSML mode calls `voice.speak_ssml()`, and the bidirectional
+button calls `voice.start_streaming()`, `voice.feed_text()`, and
+`voice.finish_streaming()`.
 
 ![Volcengine TTS test scene showing API, model, voice, text, HTTP, unidirectional streaming, bidirectional streaming, and stop controls](docs/images/screenshot_0.png)
 

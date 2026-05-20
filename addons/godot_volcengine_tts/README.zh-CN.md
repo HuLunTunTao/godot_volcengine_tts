@@ -27,7 +27,7 @@ https://www.volcengine.com/docs/6561/1257544
 | 端点 | 插件类 | SSML | 输出 |
 |---|---|---|---|
 | `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | 是 | PCM/MP3/WAV/Opus 分块 |
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | 否 | PCM 流 |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | 否 | 高层播放管线仅支持 PCM；底层 client 可请求 `opts["format"]` 指定的格式 |
 | `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | 是 | 完整音频字节 |
 
 ## 安装
@@ -72,19 +72,19 @@ voice.default_model = "seed-tts-2.0-expressive"
 
 常用运行时属性：
 
-| 属性 | 默认值 | 说明 |
-|---|---|---|
-| `api_key` | `""` | 火山 API key；未配置时请求会失败 |
-| `resource_id` | `"seed-tts-2.0"` | 火山 resource id |
-| `user_uid` | `"default"` | 请求中的用户/设备 id |
-| `default_model` | `""` | 支持的 `saturn_` 音色会自动注入的默认 model |
-| `audio_bus` | `&"Master"` | 高层播放使用的 Godot 音频总线 |
-| `sample_rate` | `24000` | `speak()` / `start_streaming()` 默认 PCM 播放采样率 |
-| `buffer_length` | `0.5` | `AudioStreamGenerator` 缓冲长度 |
-| `auto_context_chain` | `false` | 自动把上一段 session id 作为下一段 `section_id` |
-| `connect_timeout_msec` | `8000` | WebSocket/HTTP 连接超时 |
-| `session_timeout_msec` | `20000` | WebSocket 等待包的无活动超时 |
-| `read_timeout_msec` | `30000` | HTTP 读取 chunk 的无活动超时 |
+| 属性 | 所属对象 | 默认值 | 说明 |
+|---|---|---|---|
+| `api_key` | `voice` 和所有底层 client | `""` | 火山 API key；未配置时请求会失败 |
+| `resource_id` | `voice` 和所有底层 client | `"seed-tts-2.0"` | 火山 resource id |
+| `user_uid` | `voice` 和所有底层 client | `"default"` | 请求中的用户/设备 id |
+| `default_model` | `voice` 和所有底层 client | `""` | 支持的 `saturn_` 音色会自动注入的默认 model |
+| `audio_bus` | `voice` | `&"Master"` | 高层播放使用的 Godot 音频总线 |
+| `sample_rate` | `voice` | `24000` | `speak()` / `start_streaming()` 默认 PCM 播放采样率 |
+| `buffer_length` | `voice` | `0.5` | `AudioStreamGenerator` 缓冲长度 |
+| `auto_context_chain` | `voice` | `false` | 自动把上一段 session id 作为下一段 `section_id` |
+| `connect_timeout_msec` | 所有底层 client | `8000` | WebSocket/HTTP 连接超时 |
+| `session_timeout_msec` | WebSocket client | `20000` | WebSocket 等待包的无活动超时 |
+| `read_timeout_msec` | HTTP client | `30000` | HTTP 读取 chunk 的无活动超时 |
 
 可以直接配置底层 client，但只会影响对应 client。之后如果再次设置 `voice.api_key`、`voice.resource_id`、`voice.user_uid` 或 `voice.default_model`，会覆盖三个 client 上的对应值。
 
@@ -171,7 +171,7 @@ var ok := await voice.speak_ssml(
 
 ### `双向流式播放start_streaming(voice_id, opts := {})` / `feed_text(chunk)` / `finish_streaming()`
 
-用途：开启一个双向流式 session，适合 LLM 或其它生成器逐段产生文本的场景。多个文本 chunk 共享同一个服务端 session，语调延续通常会比分多次请求更自然，并且能够更快速地开始播放音频，以减少延迟感。
+用途：开启一个双向流式 session，适合 LLM 或其它生成器逐段产生文本的场景。多个文本 chunk 共享同一个服务端 session，语调延续通常会比分多次请求更自然；在服务端提前返回音频 chunk 时，也通常有机会更早开始播放。
 
 | API | 必填参数 | 可选参数 | 返回值 |
 |---|---|---|---|
@@ -219,6 +219,39 @@ file.store_buffer(mp3)
 
 传入 `opts["ssml"]` 时，`text` 可以为空字符串。
 
+下面是一个缓存音频的使用场景：
+
+```gdscript
+var name = Global.player_name
+var audio_path = "user://welcome.mp3"
+
+# 准备 AudioStreamPlayer 节点
+var player = AudioStreamPlayer.new()
+add_child(player)
+
+# 检查文件是否存在
+if not FileAccess.file_exists(audio_path):
+    # 文件不存在，则合成音频
+    var mp3 := await voice.fetch_audio(
+        "欢迎回来，尊敬的%s。" % name,
+        "zh_male_dayi_uranus_bigtts",
+        {"format": "mp3"}
+    )
+    var file := FileAccess.open(audio_path, FileAccess.WRITE)
+    file.store_buffer(mp3)
+    file.close()
+    print("音频已生成")
+else:
+    print("音频已存在，无需合成")
+
+# 播放音频
+var stream := AudioStreamMP3.load_from_file(audio_path)
+player.stream = stream
+player.play()
+```
+
+
+
 ### `stop()`、`current_session_id()` 和 `is_speaking()`
 
 | API | 说明 |
@@ -235,7 +268,7 @@ file.store_buffer(mp3)
 
 | 键 | 类型 | 适用 API | 说明 |
 |---|---|---|---|
-| `format` | String | `speak` / `start_streaming` / `fetch_audio` / 底层 client | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`；`speak()` 和 `start_streaming()` 会强制使用 PCM |
+| `format` | String | `speak` / `start_streaming` / `fetch_audio` / 底层 client | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`；高层实时播放只支持 PCM，底层 client 和 `fetch_audio()` 可请求其它格式 |
 | `sample_rate` | int | 所有合成 API | 常用 16000、24000、44100、48000 |
 | `bit_rate` | int | `fetch_audio` / 底层 client | 仅 MP3 生效 |
 | `emotion` | String | 所有合成 API | 多情感音色的情绪 |
@@ -293,7 +326,7 @@ var ok := await voice.uni_client.synthesize_streaming(
 
 ### `voice.bidi_client`
 
-`VolcengineTTSBidirectionalClient` 调用官方 `/api/v3/tts/bidirection` WebSocket 端点。它适合逐段提交文本，并在同一个 session 中接收 PCM 音频。
+`VolcengineTTSBidirectionalClient` 调用官方 `/api/v3/tts/bidirection` WebSocket 端点。它适合逐段提交文本，并在同一个 session 中接收音频；底层音频格式由 `start_session()` 的 `opts["format"]` 决定。
 
 | API / 信号 | 说明 |
 |---|---|
@@ -396,8 +429,8 @@ HTTP 流程：
 
 注意事项：
 
-- Godot 实时播放优先用 PCM。流式 MP3 分块不能直接写入 `AudioStreamGenerator`。
-- `speak()` 和 `start_streaming()` 即使传入 `"format": "mp3"` 也会强制改成 PCM。需要 MP3 字节请用 `fetch_audio()`。
+- Godot 高层实时播放只支持 PCM。流式 MP3/Opus 分块不能直接写入 `AudioStreamGenerator`。
+- `speak()` 即使传入 `"format": "mp3"` 也会强制改成 PCM；`start_streaming()` 当前没有拦截非 PCM，但高层播放管线仍然只适合 PCM。需要 MP3 字节请用 `fetch_audio()` 或底层 client 自行处理。
 - `speak()` 和 `speak_ssml()` 支持 SSML，因为它们使用单向端点。
 - 双向流式不支持 SSML。需要 SSML 请走 `speak_ssml()`、`uni_client` 或 `fetch_audio()`。
 - 部分 `saturn_` 和 `_saturn_bigtts` 音色不支持 SSML；插件只警告，最终由服务端决定。
@@ -412,6 +445,15 @@ HTTP 流程：
 - 暂不提供字幕/时间戳回调。
 - 不内置音色清单，`voice_id` 是由调用方维护的 `voice_type` 字符串。
 - 不内置系统 TTS 兜底，失败处理由调用方决定。
+
+# 参考
+
+- 火山引擎 TTS 接口文档：https://www.volcengine.com/docs/6561/1598757
+- 火山引擎 TTS 接口文档：https://www.volcengine.com/docs/6561/1719100
+- 火山引擎 TTS 接口文档：https://www.volcengine.com/docs/6561/1329505
+- 火山引擎语音合成大模型音色列表：https://www.volcengine.com/docs/6561/1257544
+- 火山引擎 SDK 合规 / 隐私相关文档：https://www.volcengine.com/docs/6561/116711
+- 火山引擎服务条款：https://www.volcengine.com/docs/6256/64903
 
 ## 许可证
 

@@ -27,7 +27,7 @@ Endpoint and client mapping:
 | Endpoint | Class | SSML | Output |
 |---|---|---|---|
 | `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | Yes | PCM/MP3/WAV/Opus chunks |
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | No | PCM stream |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | No | High-level playback only supports PCM; lower-level clients can request the format specified by `opts["format"]` |
 | `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Yes | Complete audio bytes |
 
 ## Installation
@@ -72,19 +72,19 @@ voice.default_model = "seed-tts-2.0-expressive"
 
 Useful runtime properties:
 
-| Property | Default | Notes |
-|---|---|---|
-| `api_key` | `""` | Volcengine API key; requests fail if it is not configured |
-| `resource_id` | `"seed-tts-2.0"` | Volcengine resource id |
-| `user_uid` | `"default"` | User/device id sent in requests |
-| `default_model` | `""` | Default model injected for supported `saturn_` voices |
-| `audio_bus` | `&"Master"` | Godot audio bus for high-level playback |
-| `sample_rate` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
-| `buffer_length` | `0.5` | `AudioStreamGenerator` buffer length |
-| `auto_context_chain` | `false` | Reuses the previous session id as `section_id` |
-| `connect_timeout_msec` | `8000` | WebSocket/HTTP connection timeout |
-| `session_timeout_msec` | `20000` | WebSocket inactivity timeout while waiting for packets |
-| `read_timeout_msec` | `30000` | HTTP inactivity timeout while reading chunks |
+| Property | Owner | Default | Notes |
+|---|---|---|---|
+| `api_key` | `voice` and all lower-level clients | `""` | Volcengine API key; requests fail if it is not configured |
+| `resource_id` | `voice` and all lower-level clients | `"seed-tts-2.0"` | Volcengine resource id |
+| `user_uid` | `voice` and all lower-level clients | `"default"` | User/device id sent in requests |
+| `default_model` | `voice` and all lower-level clients | `""` | Default model injected for supported `saturn_` voices |
+| `audio_bus` | `voice` | `&"Master"` | Godot audio bus for high-level playback |
+| `sample_rate` | `voice` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
+| `buffer_length` | `voice` | `0.5` | `AudioStreamGenerator` buffer length |
+| `auto_context_chain` | `voice` | `false` | Reuses the previous session id as `section_id` |
+| `connect_timeout_msec` | all lower-level clients | `8000` | WebSocket/HTTP connection timeout |
+| `session_timeout_msec` | WebSocket clients | `20000` | WebSocket inactivity timeout while waiting for packets |
+| `read_timeout_msec` | HTTP client | `30000` | HTTP inactivity timeout while reading chunks |
 
 You can configure a lower-level client directly, but that only affects that client. If you later set `voice.api_key`, `voice.resource_id`, `voice.user_uid`, or `voice.default_model`, the value is copied over all three clients again.
 
@@ -169,7 +169,7 @@ For high-level SSML playback, prefer `speak_ssml()`. `opts["ssml"]` remains avai
 
 ### `start_streaming(voice_id, opts := {})` / `feed_text(chunk)` / `finish_streaming()`
 
-Purpose: open a bidirectional streaming session for text that arrives incrementally from an LLM or another generator. Multiple text chunks share one server session, which can preserve prosody better than separate requests.
+Purpose: open a bidirectional streaming session for text that arrives incrementally from an LLM or another generator. Multiple text chunks share one server session, which can preserve prosody better than separate requests. When the server returns audio chunks before the final text is sent, playback also has a chance to begin earlier.
 
 | API | Required arguments | Optional arguments | Return value |
 |---|---|---|---|
@@ -217,6 +217,33 @@ file.store_buffer(mp3)
 
 When `opts["ssml"]` is provided, `text` may be an empty string.
 
+Here is a typical cached-audio use case:
+
+```gdscript
+var name = Global.player_name
+var audio_path = "user://welcome.mp3"
+
+var player = AudioStreamPlayer.new()
+add_child(player)
+
+if not FileAccess.file_exists(audio_path):
+	var mp3 := await voice.fetch_audio(
+		"Welcome back, %s." % name,
+		"zh_male_dayi_uranus_bigtts",
+		{"format": "mp3"}
+	)
+	var file := FileAccess.open(audio_path, FileAccess.WRITE)
+	file.store_buffer(mp3)
+	file.close()
+	print("Audio generated")
+else:
+	print("Audio already exists")
+
+var stream := AudioStreamMP3.load_from_file(audio_path)
+player.stream = stream
+player.play()
+```
+
 ### `stop()`, `current_session_id()`, and `is_speaking()`
 
 | API | Details |
@@ -233,7 +260,7 @@ When `opts["ssml"]` is provided, `text` may be an empty string.
 
 | Key | Type | Applies to | Notes |
 |---|---|---|---|
-| `format` | String | `speak` / `start_streaming` / `fetch_audio` / lower-level clients | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`; `speak()` and `start_streaming()` force PCM |
+| `format` | String | `speak` / `start_streaming` / `fetch_audio` / lower-level clients | `"mp3"` / `"pcm"` / `"wav"` / `"ogg_opus"`; high-level real-time playback only supports PCM, while lower-level clients and `fetch_audio()` can request other formats |
 | `sample_rate` | int | All synthesis APIs | Common values include 16000, 24000, 44100, 48000 |
 | `bit_rate` | int | `fetch_audio` / lower-level clients | MP3 only |
 | `emotion` | String | All synthesis APIs | Emotion for supported voices |
@@ -291,7 +318,7 @@ var ok := await voice.uni_client.synthesize_streaming(
 
 ### `voice.bidi_client`
 
-`VolcengineTTSBidirectionalClient` calls the official `/api/v3/tts/bidirection` WebSocket endpoint. It is useful when you need to submit text chunks and receive PCM audio in the same session.
+`VolcengineTTSBidirectionalClient` calls the official `/api/v3/tts/bidirection` WebSocket endpoint. It is useful when you need to submit text chunks and receive audio in the same session; the lower-level audio format follows `opts["format"]` passed to `start_session()`.
 
 | API / Signal | Details |
 |---|---|
@@ -394,8 +421,8 @@ HTTP flow:
 
 Notes:
 
-- For live Godot playback, prefer PCM. Streaming MP3 chunks cannot be pushed directly into `AudioStreamGenerator`.
-- `speak()` and `start_streaming()` force PCM even if you pass `"format": "mp3"`. Use `fetch_audio()` for MP3 bytes.
+- High-level real-time Godot playback only supports PCM. Streaming MP3/Opus chunks cannot be pushed directly into `AudioStreamGenerator`.
+- `speak()` forces PCM even if you pass `"format": "mp3"`; `start_streaming()` currently does not reject non-PCM formats, but its high-level playback pipeline is still only suitable for PCM. Use `fetch_audio()` or lower-level clients when you need to handle MP3 bytes yourself.
 - `speak()` and `speak_ssml()` support SSML because they use the unidirectional endpoint.
 - Bidirectional streaming does not support SSML. Use `speak_ssml()`, `uni_client`, or `fetch_audio()` for SSML.
 - Some `saturn_` and `_saturn_bigtts` voices do not support SSML; the addon warns but lets the server decide.
@@ -410,6 +437,15 @@ Limitations:
 - Subtitle/timestamp callbacks are not exposed yet.
 - Voice lists are not bundled. The caller owns the `voice_type` string.
 - System TTS fallback is not built in. Handle failures in your own game code.
+
+## References
+
+- Volcengine TTS API documentation: https://www.volcengine.com/docs/6561/1598757
+- Volcengine TTS API documentation: https://www.volcengine.com/docs/6561/1719100
+- Volcengine TTS API documentation: https://www.volcengine.com/docs/6561/1329505
+- Volcengine speech synthesis voice list: https://www.volcengine.com/docs/6561/1257544
+- Volcengine SDK compliance / privacy documentation: https://www.volcengine.com/docs/6561/116711
+- Volcengine terms of service: https://www.volcengine.com/docs/6256/64903
 
 ## License
 
