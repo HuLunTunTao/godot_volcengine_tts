@@ -2,12 +2,15 @@ extends Control
 
 const SAMPLE_TEXT_EN := "Hello from Godot. This scene validates the Volcengine TTS plugin with HTTP synthesis, unidirectional streaming, and bidirectional chunked streaming."
 const SAMPLE_TEXT_ZH := "你好，Godot。这个测试场景用于验证火山引擎 TTS 插件的 HTTP 合成、单向流式播放和双向分段流式播放。"
+const SAMPLE_SSML_EN := "<speak>Hello from Godot.<break time=\"300ms\"/>This scene validates high-level SSML playback.</speak>"
+const SAMPLE_SSML_ZH := "<speak>你好，Godot。<break time=\"300ms\"/>这个测试场景用于验证高层 SSML 播放。</speak>"
 const DEFAULT_VOICE := "zh_male_dayi_uranus_bigtts"
 const DEFAULT_SAMPLE_RATE := 24000
 const MODE_HTTP_MP3 := 0
 const MODE_UNI_WS_PCM := 1
 const MODE_BIDI_WS_CHUNKS := 2
 const MODE_SAVE_MP3 := 3
+const MODE_SPEAK_SSML := 4
 
 var _voice_player: VolcengineStreamingVoicePlayer
 var _http_player: AudioStreamPlayer
@@ -78,11 +81,9 @@ func _ready() -> void:
 
 
 func _apply_client_config() -> void:
-	var clients := [_voice_player.bidi_client, _voice_player.uni_client, _voice_player.http_client]
-	for client in clients:
-		client.api_key = api_key_edit.text.strip_edges()
-		client.resource_id = resource_id_edit.text.strip_edges()
-		client.default_model = model_edit.text.strip_edges()
+	_voice_player.api_key = api_key_edit.text.strip_edges()
+	_voice_player.resource_id = resource_id_edit.text.strip_edges()
+	_voice_player.default_model = model_edit.text.strip_edges()
 
 
 func _validate_inputs() -> bool:
@@ -121,6 +122,8 @@ func _on_run_pressed() -> void:
 			await _on_bidi_pressed()
 		MODE_SAVE_MP3:
 			await _on_save_audio_pressed()
+		MODE_SPEAK_SSML:
+			await _on_speak_ssml_pressed()
 
 
 func _on_http_pressed() -> void:
@@ -257,6 +260,29 @@ func _on_bidi_pressed() -> void:
 	_set_busy(false)
 
 
+func _on_speak_ssml_pressed() -> void:
+	if not _validate_inputs():
+		return
+	_set_busy(true)
+	_apply_client_config()
+	_http_player.stop()
+	_voice_player.stop()
+	_set_status(_t("status_ssml_waiting"))
+
+	var rate := int(sample_rate_spin.value)
+	_voice_player.sample_rate = rate
+	var started_at := Time.get_ticks_msec()
+	var ok := await _voice_player.speak_ssml(text_edit.text.strip_edges(), voice_edit.text.strip_edges(), {
+		"sample_rate": rate,
+	})
+	var elapsed := (Time.get_ticks_msec() - started_at) / 1000.0
+	if ok:
+		_set_status(_t("status_ssml_ok") % [elapsed, _voice_player.current_session_id()])
+	else:
+		_set_status(_t("status_ssml_failed"))
+	_set_busy(false)
+
+
 func _on_stop_pressed() -> void:
 	_voice_player.stop()
 	if _http_player != null:
@@ -270,6 +296,8 @@ func _on_language_pressed() -> void:
 	_language = "zh" if _language == "en" else "en"
 	if current_text == SAMPLE_TEXT_EN or current_text == SAMPLE_TEXT_ZH:
 		text_edit.text = _sample_text()
+	elif current_text == SAMPLE_SSML_EN or current_text == SAMPLE_SSML_ZH:
+		text_edit.text = _sample_ssml()
 	_apply_language()
 	_update_save_options_visibility()
 	_set_status(_t("status_language_changed"))
@@ -278,6 +306,7 @@ func _on_language_pressed() -> void:
 func _on_mode_selected(_index: int) -> void:
 	if mode_option.get_selected_id() != MODE_SAVE_MP3:
 		_clear_last_saved_audio()
+	_update_sample_for_mode()
 	_update_save_options_visibility()
 
 
@@ -351,11 +380,12 @@ func _set_status(message: String) -> void:
 func _update_mode_options() -> void:
 	var selected_id := mode_option.get_selected_id()
 	if selected_id < 0:
-		selected_id = MODE_HTTP_MP3
+		selected_id = MODE_UNI_WS_PCM
 	mode_option.clear()
-	mode_option.add_item(_t("mode_http_mp3"), MODE_HTTP_MP3)
 	mode_option.add_item(_t("mode_uni_ws_pcm"), MODE_UNI_WS_PCM)
+	mode_option.add_item(_t("mode_speak_ssml"), MODE_SPEAK_SSML)
 	mode_option.add_item(_t("mode_bidi_ws_chunks"), MODE_BIDI_WS_CHUNKS)
+	mode_option.add_item(_t("mode_http_mp3"), MODE_HTTP_MP3)
 	mode_option.add_item(_t("mode_save_mp3"), MODE_SAVE_MP3)
 	for item_index in mode_option.item_count:
 		if mode_option.get_item_id(item_index) == selected_id:
@@ -445,10 +475,24 @@ func _sample_text() -> String:
 	return SAMPLE_TEXT_ZH if _language == "zh" else SAMPLE_TEXT_EN
 
 
+func _sample_ssml() -> String:
+	return SAMPLE_SSML_ZH if _language == "zh" else SAMPLE_SSML_EN
+
+
+func _update_sample_for_mode() -> void:
+	var current_text := text_edit.text.strip_edges()
+	if mode_option.get_selected_id() == MODE_SPEAK_SSML:
+		if current_text == SAMPLE_TEXT_EN or current_text == SAMPLE_TEXT_ZH:
+			text_edit.text = _sample_ssml()
+	else:
+		if current_text == SAMPLE_SSML_EN or current_text == SAMPLE_SSML_ZH:
+			text_edit.text = _sample_text()
+
+
 func _t(key: String) -> String:
 	var zh := {
 		"title": "Godot 火山引擎 TTS 测试",
-		"hint": "粘贴火山引擎 API Key，填写音色，然后测试 HTTP 合成、单向流式或双向分段流式。凭证只保存在内存中。",
+		"hint": "粘贴火山引擎 API Key，填写音色，然后测试 HTTP 合成、单向流式、SSML 或双向分段流式。凭证只保存在内存中。",
 		"api_key": "API Key",
 		"api_key_placeholder": "火山引擎 API Key",
 		"resource": "资源",
@@ -459,10 +503,11 @@ func _t(key: String) -> String:
 		"text": "文本",
 		"language_button": "English/简体中文",
 		"mode": "模式",
-		"mode_http_mp3": "HTTP MP3 试听",
-		"mode_uni_ws_pcm": "单向 WS PCM",
-		"mode_bidi_ws_chunks": "双向 WS 分段",
-		"mode_save_mp3": "保存音频到本地",
+		"mode_uni_ws_pcm": "WS 单向流式",
+		"mode_speak_ssml": "WS 单向流式（SSML）",
+		"mode_bidi_ws_chunks": "WS 双向流式",
+		"mode_http_mp3": "HTTP 一次获取 MP3 试听",
+		"mode_save_mp3": "保存 MP3 音频到本地",
 		"run_button": "运行",
 		"stop_button": "停止",
 		"save_dir": "目录",
@@ -497,12 +542,15 @@ func _t(key: String) -> String:
 		"status_bidi_failed": "双向 start_session 失败。请查看输出面板里的 TTS-Bidi 警告。",
 		"status_bidi_chunk": "双向流式：已发送分段 %d/%d。",
 		"status_bidi_finished": "双向流式完成。session_id=%s。",
+		"status_ssml_waiting": "高层 speak_ssml：等待流式 PCM 播放完成...",
+		"status_ssml_ok": "高层 SSML 播放成功：%.1f 秒，session_id=%s。",
+		"status_ssml_failed": "高层 SSML 播放失败。请查看输出面板里的 VoicePlayer 或 TTS-Uni 警告。",
 		"status_stopped": "已停止。",
 		"status_language_changed": "语言已切换。"
 	}
 	var en := {
 		"title": "Godot Volcengine TTS Test",
-		"hint": "Paste a Volcengine API key, choose a voice type, then test HTTP synthesis, unidirectional streaming, or bidirectional chunked streaming. Credentials stay in memory only.",
+		"hint": "Paste a Volcengine API key, choose a voice type, then test HTTP synthesis, unidirectional streaming, SSML, or bidirectional chunked streaming. Credentials stay in memory only.",
 		"api_key": "API Key",
 		"api_key_placeholder": "Volcengine API key",
 		"resource": "Resource",
@@ -513,10 +561,11 @@ func _t(key: String) -> String:
 		"text": "Text",
 		"language_button": "English/简体中文",
 		"mode": "Mode",
-		"mode_http_mp3": "HTTP MP3 Preview",
-		"mode_uni_ws_pcm": "Uni WS PCM",
-		"mode_bidi_ws_chunks": "Bidi WS Chunks",
-		"mode_save_mp3": "Save Audio Locally",
+		"mode_uni_ws_pcm": "WS Unidirectional Streaming",
+		"mode_speak_ssml": "WS Unidirectional Streaming (SSML)",
+		"mode_bidi_ws_chunks": "WS Bidirectional Streaming",
+		"mode_http_mp3": "HTTP One-Shot MP3 Preview",
+		"mode_save_mp3": "Save MP3 Audio Locally",
 		"run_button": "Run",
 		"stop_button": "Stop",
 		"save_dir": "Directory",
@@ -551,6 +600,9 @@ func _t(key: String) -> String:
 		"status_bidi_failed": "Bidirectional start_session failed. Check the Output panel for TTS-Bidi warnings.",
 		"status_bidi_chunk": "Bidirectional streaming: fed chunk %d/%d.",
 		"status_bidi_finished": "Bidirectional streaming finished. session_id=%s.",
+		"status_ssml_waiting": "High-level speak_ssml: waiting for streamed PCM playback...",
+		"status_ssml_ok": "High-level SSML playback OK: %.1fs, session_id=%s.",
+		"status_ssml_failed": "High-level SSML playback failed. Check the Output panel for VoicePlayer or TTS-Uni warnings.",
 		"status_stopped": "Stopped.",
 		"status_language_changed": "Language switched."
 	}
