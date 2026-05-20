@@ -52,31 +52,34 @@ extends Node
 func _ready() -> void:
 	var voice := VolcengineStreamingVoicePlayer.new()
 	voice.audio_bus = &"Master"
+	voice.api_key = "your-volcengine-api-key"
+	voice.resource_id = "seed-tts-2.0"
+	voice.user_uid = "player-or-device-id"
+	voice.default_model = "seed-tts-2.0-expressive"
 	add_child(voice)
-
-	for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
-		client.api_key = "your-volcengine-api-key"
-		client.resource_id = "seed-tts-2.0"
-		client.default_model = "seed-tts-2.0-expressive"
 
 	await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
 ```
 
 ## Configuration
 
-Most projects only need to set `api_key`, `resource_id`, and optionally
-`default_model` on the clients they use:
+Most projects only need to configure the high-level voice node:
 
 ```gdscript
-for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
-	client.api_key = "your-volcengine-api-key"
-	client.resource_id = "seed-tts-2.0"
-	client.user_uid = "player-or-device-id"
-	client.default_model = "seed-tts-2.0-expressive"
+voice.api_key = "your-volcengine-api-key"
+voice.resource_id = "seed-tts-2.0"
+voice.user_uid = "player-or-device-id"
+voice.default_model = "seed-tts-2.0-expressive"
 ```
 
-You can also override the host or API path. This is useful for private gateways,
-reverse proxies, compatible endpoints, or future Volcengine path changes:
+These values are copied to the bidirectional, unidirectional, and HTTP clients.
+`api_key` defaults to an empty string; if it is not configured, `speak()` warns
+and returns `false`. If you later set one of these `voice` properties again, it
+overwrites the corresponding value on all three clients.
+
+The lower-level clients remain public for advanced usage. You can override the
+host, API path, or timeout for private gateways, reverse proxies, compatible
+endpoints, or future Volcengine path changes:
 
 ```gdscript
 voice.bidi_client.base_url = "openspeech.bytedance.com"
@@ -97,6 +100,10 @@ Other useful runtime knobs:
 
 | Property | Owner | Default | Notes |
 |---|---|---|---|
+| `api_key` | `VolcengineStreamingVoicePlayer` | `""` | Volcengine API key; copied to all clients |
+| `resource_id` | `VolcengineStreamingVoicePlayer` | `"seed-tts-2.0"` | Volcengine resource id; copied to all clients |
+| `user_uid` | `VolcengineStreamingVoicePlayer` | `"default"` | User/device id sent in requests; copied to all clients |
+| `default_model` | `VolcengineStreamingVoicePlayer` | `""` | Default model injected for supported `saturn_` voices; copied to all clients |
 | `audio_bus` | `VolcengineStreamingVoicePlayer` | `&"Master"` | Godot audio bus for high-level playback |
 | `sample_rate` | `VolcengineStreamingVoicePlayer` | `24000` | Default PCM playback sample rate for `speak()` and `start_streaming()` |
 | `buffer_length` | `VolcengineStreamingVoicePlayer` | `0.5` | `AudioStreamGenerator` buffer length |
@@ -130,10 +137,9 @@ Signals:
 
 ```gdscript
 var voice := VolcengineStreamingVoicePlayer.new()
+voice.api_key = "..."
+voice.resource_id = "seed-tts-2.0"
 add_child(voice)
-
-voice.uni_client.api_key = "..."
-voice.uni_client.resource_id = "seed-tts-2.0"
 
 var ok := await voice.speak("Hold the bridge.", "zh_male_dayi_uranus_bigtts", {
 	"emotion": "happy",

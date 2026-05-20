@@ -83,18 +83,22 @@ extends Node
 
 func _ready() -> void:
 	var voice := VolcengineStreamingVoicePlayer.new()
+	voice.api_key = "your-volcengine-api-key"
+	voice.resource_id = "seed-tts-2.0"
+	voice.user_uid = "player-or-device-id"
+	voice.default_model = "seed-tts-2.0-expressive"
 	add_child(voice)
-
-	for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
-		client.api_key = "your-volcengine-api-key"
-		client.resource_id = "seed-tts-2.0"
-		client.default_model = "seed-tts-2.0-expressive"
 
 	await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
 ```
 
 `speak()` uses the official unidirectional WebSocket client internally: it sends
 one full text or SSML request and streams PCM audio into Godot playback.
+
+`api_key` defaults to an empty string. If it is not configured, high-level
+`speak()` warns and returns `false`. The lower-level clients remain public for
+advanced uses such as custom gateways, direct chunk handling, HTTP byte
+generation, or fully custom bidirectional streaming.
 
 Under the hood, all clients send Volcengine headers including `X-Api-Key`,
 `X-Api-Resource-Id`, `X-Api-Connect-Id` or `X-Api-Request-Id`, and

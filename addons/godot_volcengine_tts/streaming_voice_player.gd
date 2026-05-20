@@ -16,10 +16,8 @@ extends Node
 ## 用法：
 ##   var voice := VolcengineStreamingVoicePlayer.new()
 ##   voice.audio_bus = &"Voice"
+##   voice.api_key = "..."
 ##   add_child(voice)
-##   voice.bidi_client.api_key = "..."
-##   voice.uni_client.api_key = "..."
-##   voice.http_client.api_key = "..."
 ##   await voice.speak("你好", "zh_male_dayi_uranus_bigtts")
 
 const BidiClientScript := preload("res://addons/godot_volcengine_tts/volcengine_tts_bidirectional_client.gd")
@@ -28,13 +26,29 @@ const HttpClientScript := preload("res://addons/godot_volcengine_tts/volcengine_
 const TtsOptionsScript := preload("res://addons/godot_volcengine_tts/tts_options.gd")
 
 # ─── 配置 ───────────────────────────────────────────────────
+@export var api_key: String = "":
+	set(value):
+		api_key = value
+		_sync_client_config()
+@export var resource_id: String = "seed-tts-2.0":
+	set(value):
+		resource_id = value
+		_sync_client_config()
+@export var user_uid: String = "default":
+	set(value):
+		user_uid = value
+		_sync_client_config()
+@export var default_model: String = "":
+	set(value):
+		default_model = value
+		_sync_client_config()
 @export var audio_bus: StringName = &"Master"
 @export var sample_rate: int = 24000
 @export var buffer_length: float = 0.5
 ## true 时连续两次 speak 自动接续 section_id（仅 TTS 2.0 音色生效）。
 @export var auto_context_chain: bool = false
 
-# ─── 公开 client 实例（调用方设 api_key 等）───────────────────
+# ─── 公开 client 实例（高级用法：自定义端点 / 直接处理 chunk 等）────────────
 var bidi_client: VolcengineTTSBidirectionalClient
 var uni_client: VolcengineTTSUnidirectionalClient
 var http_client: VolcengineTTSHttpClient
@@ -64,6 +78,7 @@ func _ready() -> void:
 	bidi_client = BidiClientScript.new()
 	uni_client = UniClientScript.new()
 	http_client = HttpClientScript.new()
+	_sync_client_config()
 	add_child(bidi_client)
 	add_child(uni_client)
 	add_child(http_client)
@@ -84,6 +99,8 @@ func _ready() -> void:
 func speak(text: String, voice: String, opts: Dictionary = {}) -> bool:
 	if _speaking:
 		stop()
+	if api_key.is_empty() and (uni_client == null or uni_client.api_key.is_empty()):
+		push_warning("[VoicePlayer] api_key 未设置；请设置 voice.api_key 或 voice.uni_client.api_key")
 
 	# 自动 section_id 续接
 	var effective_opts := opts.duplicate()
@@ -228,6 +245,18 @@ func stop() -> void:
 
 func current_session_id() -> String:
 	return _last_session_id
+
+
+# ─── 内部：配置同步 ──────────────────────────────────────────
+
+func _sync_client_config() -> void:
+	for client in [bidi_client, uni_client, http_client]:
+		if client == null:
+			continue
+		client.api_key = api_key
+		client.resource_id = resource_id
+		client.user_uid = user_uid
+		client.default_model = default_model
 
 
 # ─── 内部：playback 准备 ──────────────────────────────────────

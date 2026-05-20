@@ -65,18 +65,21 @@ extends Node
 
 func _ready() -> void:
 	var voice := VolcengineStreamingVoicePlayer.new()
+	voice.api_key = "your-volcengine-api-key"
+	voice.resource_id = "seed-tts-2.0"
+	voice.user_uid = "player-or-device-id"
+	voice.default_model = "seed-tts-2.0-expressive"
 	add_child(voice)
-
-	for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
-		client.api_key = "your-volcengine-api-key"
-		client.resource_id = "seed-tts-2.0"
-		client.default_model = "seed-tts-2.0-expressive"
 
 	await voice.speak("你好，Godot。", "zh_male_dayi_uranus_bigtts")
 ```
 
 `speak()` 内部使用官方单向 WebSocket：一次性发送完整文本或 SSML 请求，
 并把返回的 PCM 音频流式送入 Godot 播放。
+
+`api_key` 默认是空字符串。未配置时，高层 `speak()` 会给出 warning 并返回
+`false`。底层 client 仍然公开，适合自定义网关、直接处理 chunk、获取 HTTP
+音频字节或自行控制双向流式等高级场景。
 
 底层所有 client 都会携带火山引擎请求头，包括 `X-Api-Key`、
 `X-Api-Resource-Id`、`X-Api-Connect-Id` 或 `X-Api-Request-Id`，以及

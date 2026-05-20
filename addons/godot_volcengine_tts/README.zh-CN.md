@@ -46,31 +46,34 @@ extends Node
 func _ready() -> void:
 	var voice := VolcengineStreamingVoicePlayer.new()
 	voice.audio_bus = &"Master"
+	voice.api_key = "your-volcengine-api-key"
+	voice.resource_id = "seed-tts-2.0"
+	voice.user_uid = "player-or-device-id"
+	voice.default_model = "seed-tts-2.0-expressive"
 	add_child(voice)
-
-	for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
-		client.api_key = "your-volcengine-api-key"
-		client.resource_id = "seed-tts-2.0"
-		client.default_model = "seed-tts-2.0-expressive"
 
 	await voice.speak("你好，世界。", "zh_male_dayi_uranus_bigtts")
 ```
 
 ## 配置
 
-大多数项目只需要给实际使用的 client 设置 `api_key`、`resource_id`，以及可选的
-`default_model`：
+大多数项目只需要配置高层 voice 节点：
 
 ```gdscript
-for client in [voice.bidi_client, voice.uni_client, voice.http_client]:
-	client.api_key = "your-volcengine-api-key"
-	client.resource_id = "seed-tts-2.0"
-	client.user_uid = "player-or-device-id"
-	client.default_model = "seed-tts-2.0-expressive"
+voice.api_key = "your-volcengine-api-key"
+voice.resource_id = "seed-tts-2.0"
+voice.user_uid = "player-or-device-id"
+voice.default_model = "seed-tts-2.0-expressive"
 ```
 
-也可以自行覆盖 host 或 API path。这个能力适合私有网关、反向代理、兼容端点，或火山后续
-调整路径时使用：
+一旦在voice进行配置，这些值会同步到双向、单向和 HTTP 三个 client。
+
+`api_key` 默认是空字符串；
+未配置时，`speak()` 会给出 warning 并返回 `false`。如果之后再次设置这些
+`voice` 属性，会覆盖三个 client 上对应的值。
+
+底层 client 仍然公开给高级用法。你可以自行覆盖 host、API path 或 timeout，
+这个能力适合私有网关、反向代理、兼容端点，或火山后续调整路径时使用：
 
 ```gdscript
 voice.bidi_client.base_url = "openspeech.bytedance.com"
@@ -90,6 +93,10 @@ WebSocket client 使用 `wss://`，HTTP client 使用 443 端口 TLS 连接。
 
 | 属性 | 所属对象 | 默认值 | 说明 |
 |---|---|---|---|
+| `api_key` | `VolcengineStreamingVoicePlayer` | `""` | 火山 API key，会同步到所有 client |
+| `resource_id` | `VolcengineStreamingVoicePlayer` | `"seed-tts-2.0"` | 火山 resource id，会同步到所有 client |
+| `user_uid` | `VolcengineStreamingVoicePlayer` | `"default"` | 请求中的用户/设备 id，会同步到所有 client |
+| `default_model` | `VolcengineStreamingVoicePlayer` | `""` | 支持的 `saturn_` 音色会自动注入的默认 model，会同步到所有 client |
 | `audio_bus` | `VolcengineStreamingVoicePlayer` | `&"Master"` | 高层播放使用的 Godot 音频总线 |
 | `sample_rate` | `VolcengineStreamingVoicePlayer` | `24000` | `speak()` / `start_streaming()` 默认 PCM 播放采样率 |
 | `buffer_length` | `VolcengineStreamingVoicePlayer` | `0.5` | `AudioStreamGenerator` 缓冲长度 |
@@ -119,11 +126,11 @@ WebSocket client 使用 `wss://`，HTTP client 使用 443 端口 TLS 连接。
 ## 用法 A：单句流式播放
 
 ```gdscript
+# 初始化 voice
 var voice := VolcengineStreamingVoicePlayer.new()
+voice.api_key = "..."
+voice.resource_id = "seed-tts-2.0"
 add_child(voice)
-
-voice.uni_client.api_key = "..."
-voice.uni_client.resource_id = "seed-tts-2.0"
 
 var ok := await voice.speak("依老朽看，这桥要成。", "zh_male_dayi_uranus_bigtts", {
 	"emotion": "happy",
@@ -144,6 +151,8 @@ var ok := await voice.speak("依老朽看，这桥要成。", "zh_male_dayi_uran
 - 收到的 PCM chunk 会先进 FIFO 队列，再带背压写入 `AudioStreamGeneratorPlayback`。
 
 这条路径支持通过 `opts["ssml"]` 发送 SSML，但 Godot 实时播放仍会强制使用 PCM 输出。
+
+
 
 ## 用法 B：真双向流式
 
