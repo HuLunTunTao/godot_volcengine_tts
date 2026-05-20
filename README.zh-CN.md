@@ -35,18 +35,14 @@ Godot Volcengine TTS 是一个面向 Godot 4.4+ 的第三方火山引擎语音�
 
 | 端点 | 插件类 | 用途 | SSML | 输出 |
 |---|---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming 和高层 `speak()` 播放 | 否 | 用于播放的 PCM 流 |
-| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | 一次提交文本，流式返回音频块 | 是 | PCM/MP3/WAV/Opus 分块 |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming 增量文本 | 否 | 用于播放的 PCM 流 |
+| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | 高层 `speak()` 播放和一次提交文本流式返回 | 是 | PCM/MP3/WAV/Opus 分块 |
 | `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | 预生成或缓存完整音频 | 是 | 完整音频字节 |
 
 一个容易混淆的实现细节：高层 `VolcengineStreamingVoicePlayer.speak()`
-当前走的是官方双向 WebSocket 端点。它启动一个 session，一次性喂入整段文本，
-发送 `FinishSession`，再把服务端返回的 PCM 音频块流式播放。官方单向流式端点也已实现，
-但暴露为低层 `voice.uni_client.synthesize_streaming(...)` API。
-
-这样设计主要是为了方便维护：高层播放路径和真正的 LLM token streaming 路径可以共享同一套
-双向 session 生命周期、session_id 过滤、取消语义、PCM 队列和背压播放逻辑。官方单向流式
-Client 仍然保留，适合需要指定单向端点、SSML 流式返回或自定义字节处理的调用方直接使用。
+当前走的是官方单向 WebSocket 端点。它一次性发送完整文本或 SSML 请求，
+再把服务端返回的 PCM 音频块流式播放。双向端点只保留给
+`start_streaming()` / `feed_text()` / `finish_streaming()`，用于 LLM 或其他生成器逐段吐文本的场景。
 
 ## 安装
 
@@ -79,7 +75,7 @@ func _ready() -> void:
 	await voice.speak("你好，Godot。", "zh_male_dayi_uranus_bigtts")
 ```
 
-`speak()` 内部使用双向 WebSocket：启动一个 session，喂入整段文本，结束 session，
+`speak()` 内部使用官方单向 WebSocket：一次性发送完整文本或 SSML 请求，
 并把返回的 PCM 音频流式送入 Godot 播放。
 
 底层所有 client 都会携带火山引擎请求头，包括 `X-Api-Key`、

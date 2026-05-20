@@ -5,7 +5,7 @@ extends Node
 ## 内部持有三个 client（双向 / 单向 WS / HTTP）+ 一个 AudioStreamPlayer，
 ## 对调用方暴露**用法导向**的三个 API：
 ##
-##   speak(text, voice, opts)              ← 走双向 WS，单 session 喂全文后流式播放
+##   speak(text, voice, opts)              ← 走单向 WS，单次提交全文后流式播放
 ##   start_streaming/feed_text/finish      ← 走双向 WS（LLM token streaming）
 ##   fetch_audio(text, voice, opts)        ← 走 HTTP，返回完整字节（缓存/外部播放）
 ##
@@ -52,7 +52,9 @@ var _speaking: bool = false
 ## 上一次终结的 session 是否"自然完成"。
 ## true = 正常播完；false = 失败 / 被 stop() 中断。speak() 用它决定返回值。
 var _last_session_succeeded: bool = false
-## 当前 active 的 bidi session id。stop() 清空，speak() 在 start_session 成功后回填。
+## 单向 speak() 的代际 token。stop()/重入后，旧协程晚返回时用它判断自己是否陈旧。
+var _speak_token: int = 0
+## 当前 active 的 bidi session id。stop() 清空，start_streaming() 成功后回填。
 ## 用于挡掉旧 session 的延迟 audio_chunk / session_finished / session_failed 信号。
 ## 空字符串 = "当前没有活跃的 bidi session，所有 bidi 信号一律视为陈旧"。
 var _active_bidi_session_id: String = ""
@@ -74,11 +76,7 @@ func _ready() -> void:
 	bidi_client.session_failed.connect(_on_bidi_session_failed)
 
 
-# ─── 用法 A：单句流式（走双向 WS，单 session 喂全文）───────
-# 选用 bidi 而非 uni 端点的原因：
-# 1. bidi 协议层成熟、对 model/resource_id 容忍度高
-# 2. uni 端点对 model 字段较严，部分音色组合会报 "resource ID is mismatched with speaker"
-# 3. bidi 走 start_session→feed_text(全文)→finish_session 与一次性输入语义等价，延迟相当
+# ─── 用法 A：单句流式（走官方单向 WS）───────────────────────
 
 ## 一次性给文本，流式播放。返回 true=自然播完；false=失败或被中断（任一情形都会 emit speak_finished）。
 ## **重入即取消**：若上次 speak/start_streaming 仍在进行，会先 stop() 再开新 session。
@@ -106,23 +104,43 @@ func speak(text: String, voice: String, opts: Dictionary = {}) -> bool:
 
 	_speaking = true
 	_last_session_succeeded = false
+	_active_bidi_session_id = ""
+	_speak_token += 1
+	var token := _speak_token
 	_setup_streaming_player(int(effective_opts["sample_rate"]))
 
-	# 走双向：start → feed(全文) → finish。剩余的音频接收 + 播放结束由信号驱动
-	var ok: bool = await bidi_client.start_session(voice, effective_opts)
-	if not ok:
+	var out_session := {}
+	var ok: bool = await uni_client.synthesize_streaming(
+		text,
+		voice,
+		func(chunk: PackedByteArray) -> void:
+			if token == _speak_token and _speaking:
+				_on_pcm_chunk(chunk),
+		effective_opts,
+		out_session,
+	)
+	if ok and _speaking and token == _speak_token:
+		while _drain_running:
+			if not is_inside_tree():
+				break
+			await get_tree().process_frame
+		await _drain_player()
+		if _speaking and token == _speak_token:
+			_last_session_id = String(out_session.get("session_id", ""))
+			_last_session_succeeded = true
+			_speaking = false
+			speak_finished.emit()
+			return true
+
+	if _speaking and token == _speak_token:
+		_chunk_queue.clear()
+		_drain_running = false
 		_last_session_succeeded = false
 		_speaking = false
-		_player.stop()
+		if _player != null and _player.playing:
+			_player.stop()
 		speak_finished.emit()
-		return false
-	# 启动成功——记下 session id 让 bidi 信号能甄别陈旧事件
-	_active_bidi_session_id = bidi_client.current_session_id()
-	bidi_client.feed_text(text)
-	bidi_client.finish_session()
-	# 等 _on_bidi_session_finished / _on_bidi_session_failed / stop() 触发 speak_finished
-	await speak_finished
-	return _last_session_succeeded
+	return false
 
 
 # ─── 用法 B：真双向（走双向 WS）─────────────────────────────
@@ -147,7 +165,7 @@ func start_streaming(voice: String, opts: Dictionary = {}) -> bool:
 		_speaking = false
 		speak_finished.emit()
 		return ok
-	# 启动成功——记下 session id（同 speak() 一样，挡掉旧 session 的延迟信号）
+	# 启动成功——记下 session id，挡掉旧 session 的延迟信号
 	_active_bidi_session_id = bidi_client.current_session_id()
 	return ok
 
@@ -188,6 +206,8 @@ func is_speaking() -> bool:
 ## 多次调用安全。空闲时调也无副作用（不会 emit speak_finished）。
 func stop() -> void:
 	var was_speaking := _speaking
+	if was_speaking:
+		_speak_token += 1
 	# 先把 active session id 清掉——旧 session 的任何延迟 audio_chunk / session_finished /
 	# session_failed 信号到达时，handler 会比对 id 不一致直接 return
 	_active_bidi_session_id = ""

@@ -49,23 +49,16 @@ It supports the three common synthesis paths:
 
 | Endpoint | Addon class | Use case | SSML | Output |
 |---|---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming and high-level `speak()` playback | No | PCM streaming for playback |
-| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | One request, streamed audio chunks | Yes | PCM/MP3/WAV/Opus chunks |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming with incremental text | No | PCM streaming for playback |
+| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | High-level `speak()` playback and one-request streaming | Yes | PCM/MP3/WAV/Opus chunks |
 | `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Pre-generate or cache complete audio files | Yes | Complete audio bytes |
 
 Important implementation detail: the high-level `VolcengineStreamingVoicePlayer.speak()`
-method currently uses the official bidirectional WebSocket endpoint. It starts
-one session, feeds the full text once, sends `FinishSession`, and plays the PCM
-audio chunks as they arrive. The official unidirectional streaming endpoint is
-still implemented, but it is exposed as the lower-level
-`voice.uni_client.synthesize_streaming(...)` API.
-
-This design is intentional for maintainability. The playback path and the true
-LLM token-streaming path share the same bidirectional session lifecycle,
-session-id filtering, cancellation behavior, PCM queue, and backpressure logic.
-The official unidirectional streaming client remains available for callers who
-need that specific endpoint, especially for SSML streaming or custom byte
-handling.
+method uses the official unidirectional WebSocket endpoint. It sends the full
+text or SSML request once and streams PCM audio into Godot playback as chunks
+arrive. The bidirectional endpoint is reserved for
+`start_streaming()` / `feed_text()` / `finish_streaming()` when text arrives
+incrementally from an LLM or another generator.
 
 ## Installation
 
@@ -100,9 +93,8 @@ func _ready() -> void:
 	await voice.speak("Hello from Godot.", "zh_male_dayi_uranus_bigtts")
 ```
 
-`speak()` uses the bidirectional WebSocket client internally: it starts one
-session, feeds the full text, finishes the session, and streams PCM audio into
-Godot playback.
+`speak()` uses the official unidirectional WebSocket client internally: it sends
+one full text or SSML request and streams PCM audio into Godot playback.
 
 Under the hood, all clients send Volcengine headers including `X-Api-Key`,
 `X-Api-Resource-Id`, `X-Api-Connect-Id` or `X-Api-Request-Id`, and

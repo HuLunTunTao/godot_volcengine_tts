@@ -13,28 +13,19 @@ Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 
 | Endpoint | Class | Use case | SSML | Output |
 |---|---|---|---|---|
-| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming and high-level playback | No | PCM streaming |
-| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | One full text request, streamed chunks | Yes | PCM/MP3/WAV/Opus chunks |
+| `wss://openspeech.bytedance.com/api/v3/tts/bidirection` | `VolcengineTTSBidirectionalClient` | LLM token streaming with incremental text | No | PCM streaming |
+| `wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` | `VolcengineTTSUnidirectionalClient` | High-level `speak()` playback and one full text request | Yes | PCM/MP3/WAV/Opus chunks |
 | `https://openspeech.bytedance.com/api/v3/tts/unidirectional` | `VolcengineTTSHttpClient` | Pre-generate or cache complete audio | Yes | Complete audio bytes |
 
 `VolcengineStreamingVoicePlayer` owns all three clients and adds Godot playback
 on top of them.
 
 Important naming note: in this addon, "one-shot streaming playback" means the
-high-level `speak()` helper. It currently uses the official bidirectional
-WebSocket endpoint, not `/tts/unidirectional/stream`. It starts a bidirectional
-session, feeds the full text once, sends `FinishSession`, and streams returned
-PCM bytes into `AudioStreamGenerator`. The real official unidirectional
-streaming endpoint is implemented separately as
-`voice.uni_client.synthesize_streaming(...)`.
-
-This is a deliberate maintenance tradeoff. `speak()` and true LLM
-token-streaming can share the same bidirectional session lifecycle, session-id
-filtering, stale-signal protection, cancellation semantics, PCM queue, and
-backpressure playback path. Keeping one high-level playback pipeline reduces
-the chance that stop/reentry/playback behavior diverges between "one-shot" and
-"token-streaming" modes. The unidirectional client remains available as a
-lower-level API for SSML streaming and custom chunk handling.
+high-level `speak()` helper. It uses the official unidirectional WebSocket
+endpoint, sends one full text or SSML request, and streams returned PCM bytes
+into `AudioStreamGenerator`. The bidirectional endpoint is reserved for
+`start_streaming()` / `feed_text()` / `finish_streaming()` when text arrives
+incrementally from an LLM or another generator.
 
 Volcengine updates available voices over time. Check the official voice list
 before choosing a `voice_type`:
@@ -118,12 +109,12 @@ Other useful runtime knobs:
 
 | API | Endpoint | Result |
 |---|---|---|
-| `voice.speak(text, voice_id, opts)` | Bidirectional WS | Plays streamed PCM; returns `true` on natural completion |
+| `voice.speak(text, voice_id, opts)` | Unidirectional WS | Plays streamed PCM; returns `true` on natural completion |
 | `voice.start_streaming(voice_id, opts)` / `feed_text(chunk)` / `finish_streaming()` | Bidirectional WS | Plays streamed PCM from incremental text |
 | `voice.fetch_audio(text, voice_id, opts)` | HTTP chunked | Returns complete audio bytes |
 | `voice.uni_client.synthesize_streaming(text, voice_id, on_chunk, opts, out_session)` | Unidirectional WS | Calls `on_chunk` for every streamed audio chunk |
 | `voice.stop()` | Active high-level playback | Cancels playback and wakes waiters with `false` |
-| `voice.current_session_id()` | High-level player | Returns the last completed bidirectional session id |
+| `voice.current_session_id()` | High-level player | Returns the last completed high-level playback session id |
 
 Signals:
 
@@ -141,8 +132,8 @@ Signals:
 var voice := VolcengineStreamingVoicePlayer.new()
 add_child(voice)
 
-voice.bidi_client.api_key = "..."
-voice.bidi_client.resource_id = "seed-tts-2.0"
+voice.uni_client.api_key = "..."
+voice.uni_client.resource_id = "seed-tts-2.0"
 
 var ok := await voice.speak("Hold the bridge.", "zh_male_dayi_uranus_bigtts", {
 	"emotion": "happy",
@@ -156,15 +147,15 @@ fails or is interrupted by `stop()` or a later request.
 
 Implementation details:
 
-- Uses `VolcengineTTSBidirectionalClient`.
+- Uses `VolcengineTTSUnidirectionalClient`.
 - Forces `format = "pcm"` because `AudioStreamGenerator` consumes PCM frames.
 - Uses `sample_rate = voice.sample_rate` unless overridden in `opts`.
-- Runs `start_session(voice, opts)`, `feed_text(text)`, then `finish_session()`.
+- Sends one full text or SSML request through the official unidirectional endpoint.
 - Queues PCM chunks and pushes them with backpressure into
   `AudioStreamGeneratorPlayback`.
 
-This path does not support SSML because the underlying bidirectional protocol
-does not support SSML.
+This path supports SSML through `opts["ssml"]`, while live Godot playback still
+forces PCM output.
 
 ## Use Case B: True Bidirectional Streaming
 
@@ -213,8 +204,8 @@ This is the official `/api/v3/tts/unidirectional/stream` path. It sends one
 `SendText` packet containing the full request JSON, then receives
 `TTSResponse` audio frames until `SessionFinished`.
 
-Use this path directly when you need SSML with streamed audio or when you want
-to own playback, buffering, or byte handling yourself.
+Use this lower-level path directly when you want to own playback, buffering, or
+byte handling yourself.
 
 ## Use Case D: Complete Audio Bytes
 
@@ -241,7 +232,7 @@ voice.reset_context_chain()
 ```
 
 When `auto_context_chain` is enabled, consecutive `speak()` or
-`finish_streaming()` completions save the returned bidirectional `session_id`.
+`finish_streaming()` completions save the returned `session_id`.
 The next request passes it as `section_id` unless you already provided one.
 This is intended for TTS 2.0 continuity. Call `reset_context_chain()` when the
 speaker, scene, or dialogue context changes.
@@ -270,7 +261,7 @@ into the Volcengine `req_params` structure.
 | `speech_rate` | int | Commonly -50 to 100 |
 | `loudness_rate` | int | Commonly -50 to 100 |
 | `model` | String | For example `"seed-tts-2.0-expressive"` |
-| `ssml` | String | Full `<speak>...</speak>`, uni/HTTP only |
+| `ssml` | String | Full `<speak>...</speak>`, supported by `speak()`, uni, and HTTP |
 | `context_texts` | Array[String] | TTS 2.0 context hints |
 | `section_id` | String | Previous session id for context continuation |
 | `silence_duration` | int | Tail silence in milliseconds |
@@ -292,9 +283,9 @@ await voice.speak("Line.", voice_id, {
 ```
 
 `raw_req_params` bypasses all merging. Use it only when Volcengine adds fields
-before this addon has first-class names for them. For bidirectional `speak()`,
-text is still sent later through `feed_text()`, so the start-session
-`raw_req_params` normally should not include `text`.
+before this addon has first-class names for them. For high-level `speak()`, the
+raw request is sent directly to the unidirectional endpoint, so include the text
+or SSML fields required by the service when bypassing the normal option builder.
 
 ## Protocol Notes
 
@@ -372,7 +363,8 @@ from failure/interruption.
   pushed into `AudioStreamGenerator`.
 - `speak()` forces PCM even if you pass `"format": "mp3"`. Use `fetch_audio()`
   for MP3 bytes.
-- Bidirectional streaming does not support SSML. Use `uni_client` or
+- `speak()` supports SSML because it uses the unidirectional endpoint.
+- Bidirectional streaming does not support SSML. Use `speak()`, `uni_client`, or
   `fetch_audio()` for SSML.
 - Some `saturn_` and `_saturn_bigtts` voices do not support SSML; the addon
   warns but lets the server decide.
