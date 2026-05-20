@@ -14,7 +14,6 @@ const MODE_SPEAK_SSML := 4
 
 var _voice_player: VolcengineStreamingVoicePlayer
 var _http_player: AudioStreamPlayer
-var _uni_playback: AudioStreamGeneratorPlayback
 
 @onready var api_key_edit: LineEdit = %ApiKeyEdit
 @onready var resource_id_edit: LineEdit = %ResourceIdEdit
@@ -202,30 +201,14 @@ func _on_uni_pressed() -> void:
 	_set_status(_t("status_uni_waiting"))
 
 	var rate := int(sample_rate_spin.value)
-	var generator := AudioStreamGenerator.new()
-	generator.mix_rate = float(rate)
-	generator.buffer_length = 0.5
-	_http_player.stream = generator
-	_http_player.play()
-	_uni_playback = _http_player.get_stream_playback() as AudioStreamGeneratorPlayback
-	if _uni_playback == null:
-		_set_status(_t("status_playback_missing"))
-		_set_busy(false)
-		return
-
-	var out_session := {}
+	_voice_player.sample_rate = rate
 	var started_at := Time.get_ticks_msec()
-	var ok: bool = await _voice_player.uni_client.synthesize_streaming(
-		text_edit.text.strip_edges(),
-		voice_edit.text.strip_edges(),
-		func(chunk: PackedByteArray) -> void:
-			await _push_pcm(_uni_playback, chunk),
-		{"format": "pcm", "sample_rate": rate},
-		out_session,
-	)
+	var ok := await _voice_player.speak(text_edit.text.strip_edges(), voice_edit.text.strip_edges(), {
+		"sample_rate": rate,
+	})
 	var elapsed := (Time.get_ticks_msec() - started_at) / 1000.0
 	if ok:
-		_set_status(_t("status_uni_ok") % [elapsed, out_session.get("session_id", "")])
+		_set_status(_t("status_uni_ok") % [elapsed, _voice_player.current_session_id()])
 	else:
 		_set_status(_t("status_uni_failed"))
 	_set_busy(false)
@@ -325,36 +308,6 @@ func _on_replay_saved_pressed() -> void:
 		return
 	_play_mp3(_last_saved_audio)
 	_set_status(_t("status_replay_saved"))
-
-
-func _push_pcm(playback: AudioStreamGeneratorPlayback, bytes: PackedByteArray) -> void:
-	var frames := _pcm_to_frames(bytes)
-	var index := 0
-	while index < frames.size():
-		if playback == null:
-			return
-		var can_push := playback.get_frames_available()
-		if can_push <= 0:
-			await get_tree().process_frame
-			continue
-		var end := mini(index + can_push, frames.size())
-		while index < end:
-			playback.push_frame(frames[index])
-			index += 1
-
-
-func _pcm_to_frames(bytes: PackedByteArray) -> PackedVector2Array:
-	var frames := PackedVector2Array()
-	frames.resize(bytes.size() / 2)
-	var frame_index := 0
-	for byte_index in range(0, bytes.size() - 1, 2):
-		var sample := int(bytes[byte_index]) | (int(bytes[byte_index + 1]) << 8)
-		if sample >= 32768:
-			sample -= 65536
-		var value: float = clamp(float(sample) / 32768.0, -1.0, 1.0)
-		frames[frame_index] = Vector2(value, value)
-		frame_index += 1
-	return frames
 
 
 func _split_text(text: String, chunk_size: int) -> Array[String]:
@@ -535,7 +488,6 @@ func _t(key: String) -> String:
 		"status_save_ok": "已保存到 %s（%d 字节，%.1f 秒）。正在试听 MP3。",
 		"status_replay_saved": "正在重新试听上次保存成功的音频。",
 		"status_uni_waiting": "单向 WebSocket：等待流式 PCM 音频块...",
-		"status_playback_missing": "无法获取 AudioStreamGeneratorPlayback。",
 		"status_uni_ok": "单向流式成功：%.1f 秒，session_id=%s。",
 		"status_uni_failed": "单向流式失败。请查看输出面板里的 TTS-Uni 警告。",
 		"status_bidi_starting": "双向 WebSocket：正在启动 session 并分段喂入文本...",
@@ -593,7 +545,6 @@ func _t(key: String) -> String:
 		"status_save_ok": "Saved to %s (%d bytes, %.1fs). Playing MP3 preview.",
 		"status_replay_saved": "Replaying the last successfully saved audio.",
 		"status_uni_waiting": "Unidirectional WebSocket: waiting for streamed PCM chunks...",
-		"status_playback_missing": "Could not get AudioStreamGeneratorPlayback.",
 		"status_uni_ok": "Unidirectional streaming OK: %.1fs, session_id=%s.",
 		"status_uni_failed": "Unidirectional streaming failed. Check the Output panel for TTS-Uni warnings.",
 		"status_bidi_starting": "Bidirectional WebSocket: starting session and feeding text chunks...",
